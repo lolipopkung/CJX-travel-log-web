@@ -1,0 +1,2557 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFD400">
+<title>CJx Travel Log</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --y:#FFD400; --y-dk:#E6BE00; --r:#E30613; --b:#1B3A93; --g:#00A651;
+  --ink:#14181C; --soft:#6B7280; --faint:#9CA3AF;
+  --bg:#F6F7F9; --card:#FFFFFF; --rule:#E3E6EB; --field:#D8DCE3;
+  --stop:#C00510; --warn:#9A6100; --warn-w:#FFF4DF;
+  --g-w:#E4F3EB; --b-w:#EBF0FB; --r-w:#FDEAEB;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;
+  font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:contain;
+}
+h1,h2,h3,.disp{font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;margin:0;line-height:1.3}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+#app{min-height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;background:var(--bg)}
+.appbar{
+  background:var(--y);color:var(--ink);padding:calc(10px + env(safe-area-inset-top,0px)) 14px 12px;
+  display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20
+}
+.appbar .ttl{font-family:"Bai Jamjuree",sans-serif;font-weight:700;font-size:17px;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appbar button{background:transparent;border:0;color:var(--ink);font-size:19px;padding:4px 6px;cursor:pointer;position:relative}
+.badge{position:absolute;top:-2px;right:-2px;background:var(--r);color:#fff;border-radius:99px;
+  font-size:9px;font-weight:800;padding:1px 4px;min-width:15px;text-align:center}
+main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
+.nav{display:flex;background:#fff;border-top:1px solid var(--rule);position:sticky;bottom:0;
+  padding-bottom:var(--safe-b);z-index:20}
+.nav button{flex:1;background:none;border:0;padding:8px 0 9px;font:inherit;font-size:10.5px;
+  color:var(--soft);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.nav button.on{color:var(--ink);font-weight:700}
+.nav .g{font-size:19px;line-height:1}
+
+/* ---------- blocks ---------- */
+.card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:14px}
+.card>h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.card>.sub{font-size:12.5px;color:var(--soft);margin-bottom:10px}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.sp{flex:1}
+.lb{font-size:11px;color:var(--soft)}
+.vl{font-weight:600}
+.hr{height:1px;background:var(--rule);margin:4px 0}
+
+label.f{display:block;background:#fff;border:1px solid var(--field);border-radius:11px;padding:7px 11px;margin:0}
+label.f>span{display:block;font-size:10.5px;color:var(--soft)}
+label.f input,label.f select,label.f textarea{
+  width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:15px;
+  color:var(--ink);padding:2px 0 1px
+}
+label.f textarea{resize:vertical;min-height:44px}
+label.f:focus-within{border-color:var(--b);border-width:2px;padding:6px 10px}
+label.f.big input{font-size:22px;font-weight:800;letter-spacing:1.5px}
+label.f.code input{font-size:18px;font-weight:700;letter-spacing:2px}
+label.f.pin input{font-size:24px;font-weight:800;letter-spacing:10px;text-align:center}
+.hint{font-size:11.5px;color:var(--soft);padding:2px 4px}
+
+button.btn{
+  width:100%;background:var(--y);color:var(--ink);border:1px solid var(--y-dk);
+  border-radius:11px;padding:13px;font:inherit;font-family:"Bai Jamjuree",sans-serif;
+  font-weight:700;font-size:16px;cursor:pointer
+}
+button.btn.lg{padding:18px;font-size:18px}
+button.btn.gh{background:#fff;border-color:var(--field);font-weight:600}
+button.btn.stop{background:var(--stop);border-color:var(--stop);color:#fff}
+button.btn[disabled]{background:#E5E8EC;border-color:#E5E8EC;color:#9AA3AE;cursor:default}
+button.link{background:none;border:0;color:var(--b);font:inherit;font-size:14px;cursor:pointer;padding:8px}
+.seg{display:flex;border:1px solid var(--field);border-radius:11px;overflow:hidden;background:#fff}
+.seg button{flex:1;background:#fff;border:0;padding:10px 4px;font:inherit;font-size:13px;
+  font-weight:600;cursor:pointer;color:var(--ink)}
+.seg button.on{background:var(--y)}
+
+.note{border-radius:10px;padding:10px 11px;font-size:12.5px;line-height:1.55;display:flex;gap:8px}
+.note b{font-weight:600}
+.note.i{background:var(--b-w);color:var(--b)}
+.note.g{background:var(--g-w);color:#00713F}
+.note.w{background:var(--warn-w);color:var(--warn)}
+.note.e{background:var(--r-w);color:var(--r)}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
+.pill.g{background:var(--g-w);color:#00713F}.pill.w{background:var(--warn-w);color:var(--warn)}
+.pill.e{background:var(--r-w);color:var(--r)}.pill.b{background:var(--b-w);color:var(--b)}
+.pill.n{background:#EDEFF3;color:var(--soft)}
+
+.stat{background:#fff;border:1px solid var(--rule);border-radius:12px;padding:9px 11px}
+.stat .v{font-size:20px;font-weight:800;letter-spacing:-.01em}
+.stat .v small{font-size:11px;font-weight:500;color:var(--soft);margin-left:3px}
+.bar{height:9px;border-radius:99px;background:#E7EAEE;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--g);transition:width .3s}
+.bar i.w{background:#D8940B}.bar i.e{background:var(--r)}
+
+.thumb{width:100%;height:150px;object-fit:cover;border-radius:11px;background:#DEE3EA;display:block}
+.ph{height:96px;border:1px dashed var(--field);border-radius:11px;background:#F3F4F6;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;
+  color:var(--faint);font-size:12.5px}
+canvas.route{width:100%;height:190px;border-radius:11px;background:#E9EFE8;display:block}
+
+.list{display:flex;flex-direction:column}
+.item{display:flex;gap:10px;padding:10px 0;border-top:1px solid #EEF0F3;align-items:flex-start}
+.item:first-child{border-top:0}
+.item .n{flex:none;width:22px;height:22px;border-radius:7px;background:var(--b);color:#fff;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.item .n.q{background:var(--y);color:var(--ink)}
+.item .tx{flex:1;min-width:0}
+.item .tx .h{font-size:14px;font-weight:600}
+.item .tx .s{font-size:11.5px;color:var(--soft)}
+
+/* ---------- overlay / sheet ---------- */
+.mask{position:fixed;inset:0;background:rgba(12,16,22,.55);z-index:60;display:flex;
+  align-items:flex-end;justify-content:center;padding:0}
+.sheet{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;
+  padding:16px 16px calc(16px + var(--safe-b));display:flex;flex-direction:column;gap:11px;
+  max-height:90vh;overflow:auto}
+.dlg{background:#fff;border-radius:16px;width:100%;max-width:420px;margin:auto;padding:18px;
+  display:flex;flex-direction:column;gap:11px}
+.mask.mid{align-items:center;padding:18px}
+.sheet h3,.dlg h3{font-size:17px;font-weight:700}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + var(--safe-b));
+  background:#14181C;color:#fff;padding:11px 16px;border-radius:11px;font-size:13.5px;
+  z-index:90;max-width:88%;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s}
+#toast.show{opacity:1}
+#toast.err{background:var(--stop)}
+.center{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;padding:26px;text-align:center}
+.spin{width:26px;height:26px;border:3px solid #D8DCE3;border-top-color:var(--b);
+  border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.logo{min-width:64px;height:64px;padding:0 10px;border-radius:15px;background:var(--y);
+  display:inline-flex;align-items:center;justify-content:center;flex:none}
+.hide{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cjx" viewBox="0 0 100 74">
+    <path d="M44 12a25 25 0 1 0 0 44" fill="none" stroke="#E30613" stroke-width="15"/>
+    <ellipse cx="55" cy="7" rx="8" ry="6" fill="#1B3A93"/>
+    <path d="M55 18v27c0 9-6 13-14 13H26" fill="none" stroke="#1B3A93" stroke-width="15"/>
+    <path d="M70 27l26 31M96 27L70 58" fill="none" stroke="#00A651" stroke-width="13"/>
+    <rect x="4" y="66" width="92" height="8" fill="#00A651"/>
+  </symbol>
+</svg>
+
+<div id="app"><div class="center"><div class="spin"></div><div>กำลังเปิดแอป…</div></div></div>
+<div id="toast"></div>
+<div id="overlay"></div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+/* =====================================================================
+   CJx Travel Log — เว็บแอปใช้งานจริง (ไฟล์เดียว)
+   ---------------------------------------------------------------------
+   ตั้งค่า 2 บรรทัดล่างนี้ก่อนใช้งาน (หรือปล่อยว่างแล้วกรอกในหน้าตั้งค่า)
+   anon key เปิดเผยได้ตามปกติ ความปลอดภัยอยู่ที่ RLS ในฐานข้อมูล
+   ===================================================================== */
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+
+const CFG = {
+  url: SUPABASE_URL || localStorage.getItem('tl.url') || '',
+  key: SUPABASE_ANON_KEY || localStorage.getItem('tl.key') || '',
+  appName: 'CJx Travel Log',
+  // เข้าระบบด้วยรหัสพนักงาน + PIN เท่านั้น (เลิกอีเมล OTP 21 ส.ค. 2569)
+  // เพราะพนักงานภาคสนาม 1,078 จาก 1,905 คนไม่มีอีเมลบริษัท และ Admin
+  // ต้องคุมได้ว่าใครเข้าระบบได้ ดู sql/10_pin_only.sql
+  pinDomain: 'pin.cjx.local',
+  pinLength: 6,
+  consentVersion: '2026-08-21',
+  bucket: 'triplog',
+  dwellMinutes: 30,      // แวะเกินเท่านี้ = ระบบ stamp พิกัดให้เอง
+  dwellRadiusM: 80,
+  gpsMaxAccuracyM: 50,
+  gpsMinMoveM: 25,
+  gpsMaxSpeedMps: 55,
+  // ช่อง "เลขไมล์ตอนเติม" ในหน้าเติมน้ำมัน — ปิดไว้ตามที่สั่ง 21 ส.ค. 2569
+  // ยังไม่ต้องใช้ แต่คอลัมน์ fuel_records.odo_at_fill ยังอยู่
+  // เปิดคืนเมื่อไหร่ก็เปลี่ยนเป็น true บรรทัดเดียว
+  showFuelOdometer: false,
+  gpsMinGapSec: 3,          // อย่าเก็บจุดถี่กว่านี้ — 10 ชม. x 1 จุด/วินาที = localStorage ล้น
+  keepPointsInDevice: 1500, // จุดที่ส่งขึ้นระบบแล้ว เก็บในเครื่องไว้เท่าที่พอวาดเส้นทาง
+  curfewUserHour: 21,
+  curfewSupHour: 22,
+  syncEverySec: 60,
+};
+
+let sb = null;
+const S = {                       // สถานะทั้งแอปอยู่ที่นี่
+  ready: false, view: 'home', tab: 'home',
+  profile: null, vehicles: [], quota: null, master: null,
+  alerts: 0, approvals: 0, online: navigator.onLine,
+  trip: null,                     // { id, startAt, distM, points, stops, fuels, dwell }
+  watchId: null, wakeLock: null, lastPos: null,
+  dwellAnchor: null, dwellSince: 0, dwellStopId: null, pendingDwell: null,
+  curfewWarned: 0, pending: 0, busy: false,
+};
+
+/* เวอร์ชันก่อนหน้าเคยเข้าด้วยอีเมล — ล้างค่าที่ค้างไว้ทิ้ง */
+try { localStorage.removeItem('tl.lastEmail'); } catch {}
+
+/* ---------------------------------------------------------------- utils */
+const $ = (s, r = document) => r.querySelector(s);
+const el = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const p2 = n => String(n).padStart(2, '0');
+const thDate = d => `${d.getDate()} ${TH_M[d.getMonth()]} ${(d.getFullYear() + 543) % 100}`;
+const thTime = d => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+const thSec  = d => `${thTime(d)}:${p2(d.getSeconds())}`;
+const thDT   = d => `${thDate(d)} ${thTime(d)}`;
+const nf = (n, d = 1) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('th-TH', { minimumFractionDigits: d, maximumFractionDigits: d });
+const ni = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString('th-TH');
+const dur = ms => { const m = Math.floor(ms / 60000); return m < 60 ? `${m} นาที` : `${Math.floor(m / 60)} ชม. ${m % 60} น.`; };
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+
+/* โลโก้บริษัท — ใช้ไฟล์จริง logo.png ที่วางไว้ข้าง index.html
+   ห้ามดัดแปลงรูป: แสดงตามสัดส่วนเดิมเสมอ (object-fit: contain)
+   ถ้าไฟล์หาย onerror จะสลับไปใช้รูปวาดสำรอง เพื่อไม่ให้หน้าจอว่าง
+   ใส่ไฟล์ด้วย:  python tools/set_logo.py "<โลโก้.png>"  */
+function logoImg(h, cls) {
+  return `<img src="logo.png" alt="CJx" data-h="${h}" class="${cls || ''}"
+     style="height:${h}px;width:auto;max-width:100%;object-fit:contain;display:block"
+     onerror="cjxLogoFallback(this)">`;
+}
+
+/* เรียกจาก onerror ของ <img> ด้านบน ต้องอยู่บน window เพราะสคริปต์นี้เป็น module
+   (เคยยัด HTML ลงในแอตทริบิวต์ onerror ตรง ๆ แล้วเครื่องหมายคำพูดซ้อนกันพัง) */
+window.cjxLogoFallback = (img) => {
+  const h = +img.dataset.h || 22;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', Math.round(h * 1.35));
+  svg.setAttribute('height', h);
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', '#cjx');
+  svg.append(use);
+  img.replaceWith(svg);
+};
+
+function toast(msg, err) {
+  const t = $('#toast'); t.textContent = msg;
+  t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', err ? 4800 : 2600);
+}
+
+function haversineM(a, b, c, d) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLa = rad(c - a), dLo = rad(d - b);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLo / 2) ** 2;
+  return R * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* -------------------------------------------------- local store (offline) */
+const LS = {
+  get(k, dflt) { try { return JSON.parse(localStorage.getItem('tl.' + k)) ?? dflt; } catch { return dflt; } },
+  set(k, v) { try { localStorage.setItem('tl.' + k, JSON.stringify(v)); } catch (e) { console.warn('localStorage full', e); } },
+  del(k) { localStorage.removeItem('tl.' + k); },
+};
+
+/* รูปถ่ายเก็บใน IndexedDB เพราะ localStorage เล็กเกินไป */
+const IDB = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('tl-media', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos');
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async put(id, blob) { const db = await this.open();
+    return new Promise((res, rej) => { const t = db.transaction('photos', 'readwrite');
+      t.objectStore('photos').put(blob, id); t.oncomplete = res; t.onerror = () => rej(t.error); }); },
+  async get(id) { const db = await this.open();
+    return new Promise((res, rej) => { const t = db.transaction('photos', 'readonly');
+      const q = t.objectStore('photos').get(id); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
+  async del(id) { const db = await this.open();
+    return new Promise((res) => { const t = db.transaction('photos', 'readwrite');
+      t.objectStore('photos').delete(id); t.oncomplete = res; }); },
+};
+
+/* เปิดด้วยการดับเบิลคลิกไฟล์ (file://) ใช้งานไม่ได้จริง
+   · เบราว์เซอร์ห้ามโหลด .js ข้ามไฟล์ (โหมด Demo จึงเปิดไม่ได้)
+   · GPS กับกล้องต้องเป็น http://localhost หรือ https เท่านั้น
+   · service worker ลงทะเบียนไม่ได้
+   บอกให้ชัดตั้งแต่แรก ดีกว่าปล่อยให้ไปเจอ error ตอนกดใช้งาน */
+function renderFileProtocolHelp() {
+  $('#app').innerHTML = '';
+  $('#app').append(el(`<div class="center">
+    <div class="logo">${logoImg(34)}</div>
+    <h2>${CFG.appName}</h2>
+    <div class="note e" style="text-align:left"><span>🚫</span><span>
+      คุณเปิดไฟล์ด้วยการ<b>ดับเบิลคลิก</b> (ที่ช่อง URL ขึ้นต้นด้วย
+      <span class="mono">file:///</span>) — วิธีนี้ใช้งานไม่ได้<br><br>
+      เบราว์เซอร์ห้ามโหลดไฟล์ <span class="mono">.js</span> ข้ามกันเมื่อเปิดแบบนี้
+      และ<b>ไม่ให้ใช้ GPS กับกล้อง</b>ด้วย ต้องเปิดผ่าน
+      <span class="mono">http://localhost</span> หรือ <span class="mono">https</span></span></div>
+    <div class="note g" style="text-align:left"><span>✅</span><span>
+      <b>วิธีเปิดที่ถูกต้อง</b><br>
+      กลับไปที่โฟลเดอร์ <span class="mono">Travel App</span> แล้ว<b>ดับเบิลคลิกไฟล์
+      <span class="mono">start-local.bat</span></b><br>
+      เบราว์เซอร์จะเปิดหน้านี้ให้เองที่ <span class="mono">http://localhost:8788</span><br>
+      (เปิดหน้าต่างดำค้างไว้ตลอดเวลาที่ใช้งาน)</span></div>
+    <div class="note i" style="text-align:left"><span>💻</span><span>
+      หรือพิมพ์คำสั่งนี้ใน Command Prompt ที่โฟลเดอร์ Travel App<br>
+      <span class="mono" style="font-size:11px">python -m http.server 8788 --directory web</span>
+      <br>แล้วเปิด <span class="mono">http://localhost:8788</span></span></div>
+    <button class="btn gh" id="anyway">เปิดต่อทั้งที่รู้ว่าใช้ไม่ได้</button>
+  </div>`));
+  $('#anyway').onclick = () => { sessionStorage.setItem('tl.ignoreFile', '1'); startApp(); };
+}
+
+/* ตรวจคีย์ที่ผู้ใช้วางมา — คืนข้อความปัญหา หรือ null ถ้าใช้ได้
+   สำคัญที่สุดคือกันคีย์ลับ ไม่ใช่กันคีย์ผิดรูปแบบ
+   ของเดิมเช็กแค่ความยาว ซึ่ง service_role ก็ผ่าน แล้วจะข้าม RLS ได้ทั้งหมด */
+function keyProblem(k) {
+  if (!k) return 'ยังไม่ได้ใส่ key';
+
+  if (/^sb_secret_/i.test(k))
+    return 'นี่คือ Secret key ห้ามใช้ในเว็บ — ต้องใช้ Publishable key (sb_publishable_…)';
+
+  if (/^sb_publishable_/i.test(k))
+    return k.length < 25 ? 'Publishable key ดูสั้นเกินไป คัดลอกมาไม่ครบ' : null;
+
+  if (/^eyJ/.test(k)) {                       // JWT แบบเก่า อ่าน payload ดู role
+    try {
+      const p = JSON.parse(atob(k.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (p.role === 'service_role')
+        return 'นี่คือ service_role key ห้ามใช้ในเว็บ — ต้องใช้ anon public key';
+      if (p.role && p.role !== 'anon')
+        return 'key นี้เป็น role "' + p.role + '" ต้องใช้ anon public key';
+    } catch { /* อ่านไม่ออกก็ปล่อยผ่าน ให้ Supabase ตอบเองว่าใช้ไม่ได้ */ }
+    return k.length < 100 ? 'anon key ดูสั้นเกินไป คัดลอกมาไม่ครบ' : null;
+  }
+
+  if (/supabase\.co/i.test(k)) return 'ช่องนี้ใส่ key ไม่ใช่ URL';
+  return 'รูปแบบ key ไม่ถูกต้อง — ต้องขึ้นต้นด้วย sb_publishable_ หรือ eyJ';
+}
+
+/* ==================================================================== */
+/*  หน้าตั้งค่าเซิร์ฟเวอร์ (ครั้งแรกเท่านั้น)                              */
+/* ==================================================================== */
+function renderSetup(msg) {
+  $('#app').innerHTML = '';
+  $('#app').append(el(`
+    <div class="center">
+      <div class="logo">${logoImg(34)}</div>
+      <h2>${CFG.appName}</h2>
+      <div class="hint">ตั้งค่าการเชื่อมต่อครั้งแรก (ทำครั้งเดียว)</div>
+      ${msg ? `<div class="note e" style="text-align:left"><span>⚠</span><span>${esc(msg)}</span></div>` : ''}
+      <label class="f" style="width:100%"><span>Project URL</span>
+        <input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(CFG.url)}"></label>
+      <label class="f" style="width:100%"><span>Publishable key (หรือ anon public key)</span>
+        <input id="ck" placeholder="sb_publishable_… หรือ eyJhbGciOi…" value="${esc(CFG.key)}"></label>
+      <button class="btn" id="save">บันทึกและเริ่มใช้งาน</button>
+      <div class="note i" style="text-align:left"><span>🔍</span><span>
+        <b>หาค่า 2 ตัวนี้ที่ไหน</b><br>
+        Supabase → เมนูซ้ายล่างสุด <b>Project Settings</b> (รูปเฟือง) →
+        <b>API Keys</b> หรือ <b>Data API</b><br><br>
+        Supabase เปลี่ยนชื่อคีย์ใหม่ ถ้าไม่เห็นคำว่า "anon" ให้มองหา<br>
+        · <b>Publishable key</b> ขึ้นต้นด้วย <span class="mono">sb_publishable_</span> ← ใช้ตัวนี้<br>
+        · หรือกดแท็บ <b>Legacy API keys</b> แล้วใช้ <b>anon public</b>
+        ขึ้นต้นด้วย <span class="mono">eyJ</span><br>
+        ใช้ได้ทั้งสองแบบ</span></div>
+      <div class="note e" style="text-align:left"><span>⛔</span><span>
+        <b>ห้ามใส่คีย์ลับ</b> — <span class="mono">sb_secret_…</span> หรือ
+        <span class="mono">service_role</span> เพราะข้ามกฎความปลอดภัย (RLS) ได้ทั้งหมด
+        ใครเปิดหน้าเว็บก็จะอ่านข้อมูลของทุกคนได้</span></div>
+      <div class="hint">Publishable / anon key เปิดเผยได้ตามปกติ ไม่ใช่ความลับ —
+        ความปลอดภัยอยู่ที่กฎ RLS ในฐานข้อมูล</div>
+      <div class="hr" style="width:100%"></div>
+      <button class="btn gh" id="demo">🧪 ลองใช้แบบ Demo (ไม่ต้องมีฐานข้อมูล)</button>
+      <div class="hint">ข้อมูลปลอมเก็บในเครื่องนี้เท่านั้น + GPS จำลอง
+        ใช้ดูหน้าตาและลองกดใช้งานทุกขั้นตอนได้ครบ</div>
+    </div>`));
+  $('#demo').onclick = () => { localStorage.setItem('tl.demo', '1'); location.reload(); };
+  $('#save').onclick = () => {
+    const u = $('#cu').value.trim().replace(/\/+$/, ''), k = $('#ck').value.trim();
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(u))
+      return toast('Project URL ต้องเป็นแบบ https://xxxx.supabase.co', 1);
+
+    const bad = keyProblem(k);
+    if (bad) return toast(bad, 1);
+
+    localStorage.setItem('tl.url', u); localStorage.setItem('tl.key', k);
+    location.reload();
+  };
+}
+
+/* ==================================================================== */
+/*  โครงหน้า                                                            */
+/* ==================================================================== */
+function shell(title, body, opts = {}) {
+  const o = Object.assign({ back: false, tabs: true, actions: true }, opts);
+  $('#app').innerHTML = '';
+  const bar = el(`<div class="appbar">
+    ${o.back ? '<button id="bk" aria-label="ย้อนกลับ">←</button>'
+             : logoImg(22)}
+    <div class="ttl">${esc(title)}</div>
+    ${o.actions ? `
+      ${S.profile?.role === 'admin' || S.profile?.role === 'superadmin'
+        ? '<button id="adm" title="Admin">🛠</button>' : ''}
+      <button id="st" title="ตั้งค่า">⚙</button>` : ''}
+  </div>`);
+  const main = el('<main></main>');
+  (Array.isArray(body) ? body : [body]).filter(Boolean).forEach(n => main.append(n));
+  $('#app').append(bar, main);
+  if (o.tabs) $('#app').append(tabs());
+  if (o.back) $('#bk').onclick = o.back === true ? () => go('home') : o.back;
+  if (o.actions) {
+    if ($('#st')) $('#st').onclick = () => go('settings');
+    if ($('#adm')) $('#adm').onclick = () => go('admin');
+  }
+  window.scrollTo(0, 0);
+}
+
+function tabs() {
+  const isSup = S.profile?.is_supervisor || S.profile?.role === 'admin' || S.profile?.role === 'superadmin';
+  const t = el(`<div class="nav">
+    <button data-v="home" class="${S.tab === 'home' ? 'on' : ''}"><span class="g">🏠</span>หน้าหลัก</button>
+    <button data-v="history" class="${S.tab === 'history' ? 'on' : ''}"><span class="g">🕘</span>ประวัติ</button>
+    <button data-v="alerts" class="${S.tab === 'alerts' ? 'on' : ''}"><span class="g">🔔</span>แจ้งเตือน${S.alerts ? `<span class="badge">${S.alerts}</span>` : ''}</button>
+    <button data-v="${isSup ? 'approvals' : 'requests'}" class="${['approvals', 'requests'].includes(S.tab) ? 'on' : ''}">
+      <span class="g">${isSup ? '✅' : '📝'}</span>${isSup ? 'อนุมัติ' : 'คำขอ'}${isSup && S.approvals ? `<span class="badge">${S.approvals}</span>` : ''}</button>
+  </div>`);
+  t.querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.v));
+  return t;
+}
+
+function loading(msg) {
+  $('#app').innerHTML = '';
+  $('#app').append(el(`<div class="center"><div class="spin"></div><div>${esc(msg || 'กำลังโหลด…')}</div></div>`));
+}
+
+function overlay(node) {
+  const m = el('<div class="mask"></div>');
+  m.append(node);
+  m.onclick = e => { if (e.target === m && node.dataset.dismiss !== 'no') closeOverlay(); };
+  $('#overlay').innerHTML = ''; $('#overlay').append(m);
+}
+function closeOverlay() { $('#overlay').innerHTML = ''; }
+
+/* confirm() / prompt() ของเบราว์เซอร์ถูกบล็อกได้ในโหมด standalone (PWA)
+   จุดสำคัญอย่างปิดงาน/อนุมัติจะเงียบหายไปเลย จึงใช้กล่องของแอปเอง */
+function askConfirm(title, body, okLabel, danger) {
+  return new Promise((done) => {
+    const d = el(`<div class="dlg" data-dismiss="no">
+      <h3>${esc(title)}</h3>
+      ${body ? `<div style="font-size:13.5px;white-space:pre-line">${esc(body)}</div>` : ''}
+      <button class="btn ${danger ? 'stop' : ''}" id="dy">${esc(okLabel || 'ยืนยัน')}</button>
+      <button class="btn gh" id="dn">ยกเลิก</button></div>`);
+    overlay(d);
+    $('#dy').onclick = () => { closeOverlay(); done(true); };
+    $('#dn').onclick = () => { closeOverlay(); done(false); };
+  });
+}
+
+function askText(title, label, placeholder, required) {
+  return new Promise((done) => {
+    const d = el(`<div class="dlg" data-dismiss="no">
+      <h3>${esc(title)}</h3>
+      <label class="f"><span>${esc(label)}</span>
+        <textarea id="dtx" placeholder="${esc(placeholder || '')}"></textarea></label>
+      <button class="btn" id="dy">ส่ง</button>
+      <button class="btn gh" id="dn">ยกเลิก</button></div>`);
+    overlay(d);
+    setTimeout(() => $('#dtx')?.focus(), 120);
+    $('#dy').onclick = () => {
+      const v = $('#dtx').value.trim();
+      if (required && v.length < 3) return toast('กรุณาพิมพ์เหตุผล', 1);
+      closeOverlay(); done(v);
+    };
+    $('#dn').onclick = () => { closeOverlay(); done(null); };
+  });
+}
+
+/* แจ้งแล้วบังคับให้เริ่มใหม่ — ใช้แทน alert() ตอนบัญชีมีปัญหา */
+function fatalNotice(title, body) {
+  $('#overlay').innerHTML = '';
+  $('#app').innerHTML = '';
+  $('#app').append(el(`<div class="center">
+    <div style="font-size:40px">🚫</div><h2>${esc(title)}</h2>
+    <div style="font-size:14px">${esc(body)}</div>
+    <button class="btn" id="rl">กลับหน้าเข้าสู่ระบบ</button></div>`));
+  $('#rl').onclick = () => location.reload();
+}
+
+/* ==================================================================== */
+/*  เข้าสู่ระบบ                                                          */
+/* ==================================================================== */
+function viewLogin() {
+  const body = el(`<main>
+    <div style="text-align:center;padding:14px 0 4px">
+      <div class="logo" style="margin:0 auto">${logoImg(34)}</div>
+      <h2 style="margin-top:12px">${CFG.appName}</h2>
+      <div class="lb">บันทึกการเดินทางเพื่อปฏิบัติงาน</div>
+    </div>
+    <label class="f code"><span>รหัสพนักงาน</span>
+      <input id="ec" autocapitalize="characters" autocomplete="username"
+             placeholder="80011786 หรือ CMT1800500"
+             value="${esc(localStorage.getItem('tl.lastCode') || '')}"></label>
+    <label class="f pin"><span>PIN ${CFG.pinLength} หลัก</span>
+      <input id="pin" type="password" inputmode="numeric" maxlength="${CFG.pinLength}"
+             autocomplete="current-password" placeholder="••••••"></label>
+    <button class="btn lg" id="pinin">เข้าใช้งาน</button>
+    <div class="note i"><span>🔑</span><span><b>ยังไม่มี PIN?</b>
+      ติดต่อ Admin เพื่อขอ PIN ครั้งแรก — ใช้เข้าได้ครั้งเดียว
+      เข้าแล้วระบบจะให้คุณตั้ง PIN ใหม่ที่มีแค่คุณรู้ทันที</span></div>
+    <div class="note w"><span>❓</span><span><b>ลืม PIN / เปลี่ยนเครื่อง</b>
+      ติดต่อ Admin เพื่อออก PIN ใบใหม่ ระบบไม่ได้เก็บ PIN เป็นตัวเลขไว้ที่ไหน
+      จึงดูย้อนหลังให้ไม่ได้</span></div>
+    <div class="note g"><span>🔒</span><span>แอปนี้บันทึกตำแหน่งเฉพาะช่วงที่กด
+      "เริ่มปฏิบัติงาน" จนถึง "สิ้นสุดการทำงาน" เท่านั้น ไม่ได้ติดตามการเดินทางส่วนตัวของคุณ</span></div>
+  </main>`);
+
+  $('#app').innerHTML = ''; $('#app').append(body);
+
+  const go2 = async (e) => {
+    const btn = $('#pinin');
+    const code = $('#ec').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const pin = $('#pin').value.trim();
+    if (!/^([0-9]{8}|[A-Z]{3}[0-9]{7})$/.test(code))
+      return toast('รหัสพนักงานต้องเป็นตัวเลข 8 หลัก หรือตัวอักษร 3 ตัว + เลข 7 หลัก', 1);
+    if (pin.length !== CFG.pinLength)
+      return toast(`PIN ต้องเป็นตัวเลข ${CFG.pinLength} หลัก`, 1);
+    btn.disabled = true; btn.textContent = 'กำลังเข้าระบบ…';
+
+    const email = code.toLowerCase() + '@' + CFG.pinDomain;
+    const { error } = await sb.auth.signInWithPassword({ email, password: pin });
+    if (error) {
+      btn.disabled = false; btn.textContent = 'เข้าใช้งาน';
+      return toast(/fetch|network/i.test(String(error.message))
+        ? 'ไม่มีสัญญาณอินเทอร์เน็ต — การเข้าระบบต้องมีเน็ต'
+        : 'รหัสพนักงานหรือ PIN ไม่ถูกต้อง — ลืม PIN ให้ติดต่อ Admin', 1);
+    }
+    // ครั้งแรกต้องผูก profile กับรายชื่อ HR ด้วยรหัสพนักงาน
+    const { data } = await sb.rpc('claim_pin_account', { p_employee_code: code });
+    if (data && data.ok !== true) {
+      toast(({ ALREADY_CLAIMED: 'รหัสพนักงานนี้ถูกใช้กับอีกบัญชีแล้ว แจ้ง Admin',
+               NOT_IN_HR_LIST: 'ไม่พบรหัสพนักงานนี้ในรายชื่อ HR แจ้ง Admin',
+               EMAIL_MISMATCH: 'ข้อมูลบัญชีไม่ตรงกัน แจ้ง Admin' })[data.code]
+             || 'เข้าระบบไม่สมบูรณ์ (' + data.code + ')', 1);
+    }
+    localStorage.setItem('tl.lastCode', code);
+    boot();
+  };
+
+  $('#pinin').onclick = go2;
+  $('#pin').onkeydown = (e) => { if (e.key === 'Enter') go2(e); };
+  setTimeout(() => { if (!$('#ec').value) $('#ec').focus(); else $('#pin').focus(); }, 150);
+}
+
+function friendly(e) {
+  const s = String(e?.message || e);
+  if (/invalid login credentials/i.test(s))
+    return 'รหัสพนักงานหรือ PIN ไม่ถูกต้อง — ลืม PIN ให้ติดต่อ Admin';
+  if (/invalid/i.test(s)) return 'ข้อมูลไม่ถูกต้อง ตรวจสอบอีกครั้ง';
+  if (/rate limit|too many/i.test(s)) return 'ลองถี่เกินไป รอสักครู่แล้วลองใหม่';
+  if (/fetch|network|failed to fetch/i.test(s)) return 'ไม่มีสัญญาณอินเทอร์เน็ต';
+  return s.slice(0, 160);
+}
+
+/* ==================================================================== */
+/*  ตั้ง PIN ใหม่ / ยินยอม / โปรไฟล์ / รถ                                 */
+/* ==================================================================== */
+function viewSetPin() {
+  const b = el(`<main>
+    <div class="note w"><span>🛡</span><span>PIN ที่ Admin ออกให้ใช้ได้ครั้งเดียว
+      กรุณาตั้ง PIN ใหม่ที่มีแค่คุณรู้ เพื่อป้องกันคนอื่นเข้ามาบันทึกการเดินทางแทนคุณ<br>
+      <b>จำ PIN นี้ให้ดี</b> ระบบไม่เก็บเป็นตัวเลขไว้ที่ไหน ลืมแล้วต้องขอ Admin ออกใบใหม่</span></div>
+    <div class="card"><h3>บัญชีของคุณ</h3>
+      <div class="lb">${esc(S.profile.full_name || '—')}</div>
+      <div class="mono">${esc(S.profile.employee_code || '—')}</div></div>
+    <label class="f pin"><span>PIN ใหม่ 6 หลัก</span>
+      <input id="p1" type="password" inputmode="numeric" maxlength="6" placeholder="••••••"></label>
+    <label class="f pin"><span>ยืนยัน PIN ใหม่</span>
+      <input id="p2" type="password" inputmode="numeric" maxlength="6" placeholder="••••••"></label>
+    <div class="hint">ห้ามใช้เลขซ้ำกันทั้งหมด (111111) และเลขเรียง (123456)</div>
+    <button class="btn" id="ok">บันทึก PIN และเริ่มใช้งาน</button>
+  </main>`);
+  $('#app').innerHTML = '';
+  $('#app').append(el(`<div class="appbar"><div class="ttl">ตั้ง PIN ของคุณ</div></div>`), b);
+  $('#ok').onclick = async (e) => {
+    const a = $('#p1').value.trim(), c = $('#p2').value.trim();
+    if (a !== c) return toast('PIN ทั้งสองช่องไม่ตรงกัน', 1);
+    if (!/^[0-9]{6}$/.test(a)) return toast('PIN ต้องเป็นตัวเลข 6 หลัก', 1);
+    if (/^(\d)\1{5}$/.test(a) || a === '123456' || a === '654321')
+      return toast('PIN นี้เดาง่ายเกินไป', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    const { error } = await sb.auth.updateUser({ password: a });
+    if (error) { e.target.disabled = false; e.target.textContent = 'บันทึก PIN และเริ่มใช้งาน';
+      return toast(friendly(error), 1); }
+    await sb.rpc('mark_pin_changed');
+    toast('ตั้ง PIN เรียบร้อย'); boot();
+  };
+}
+
+function viewConsent() {
+  const items = [
+    ['🕐', 'เก็บเมื่อไหร่', 'เฉพาะช่วงที่คุณกด "เริ่มปฏิบัติงาน" จนถึง "สิ้นสุดการทำงาน" เท่านั้น นอกช่วงนี้ระบบไม่เก็บตำแหน่งของคุณเลย'],
+    ['📍', 'เก็บอะไร', 'ตำแหน่ง (พิกัด) พร้อมวันเวลา · เลขไมล์และรูปหน้าปัด · สลิปน้ำมันและจำนวนลิตร · ประเภทงานและสาขาที่ไปปฏิบัติงาน'],
+    ['🎯', 'เอาไปทำอะไร', 'ใช้ประกอบการเบิกค่าเดินทาง/ค่าน้ำมัน ตรวจสอบการปฏิบัติงาน และวางแผนเส้นทาง — ไม่ใช้ประเมินเรื่องส่วนตัว'],
+    ['👥', 'ใครเห็นได้', 'ตัวคุณเอง · หัวหน้างานตามสายอนุมัติ · ฝ่ายบัญชี/ตรวจสอบ · ผู้ดูแลระบบ เท่าที่จำเป็นต่อหน้าที่'],
+    ['🗄', 'เก็บนานเท่าไหร่', 'เก็บไว้จนกว่าจะถึงรอบลบข้อมูลจากระบบตามนโยบายของบริษัท หรือเมื่อหมดความจำเป็นตามวัตถุประสงค์ที่แจ้งไว้'],
+    ['✅', 'สิทธิของคุณ', 'ขอดู ขอสำเนา ขอแก้ไข หรือขอให้ลบข้อมูลของคุณได้ โดยติดต่อผู้ดูแลระบบ/HR'],
+  ];
+  const b = el(`<main>
+    <h2>ก่อนเริ่มใช้งาน กรุณาอ่านให้ครบ</h2>
+    <div class="lb">แอปนี้พัฒนาเพื่อบันทึกการเดินทาง "เพื่อทำงานให้บริษัท" เท่านั้น</div>
+    ${items.map(([i, t, d]) => `<div class="card"><h3>${i} ${t}</h3><div class="sub" style="margin:0">${d}</div></div>`).join('')}
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 2px">
+      <input type="checkbox" id="ag" style="width:19px;height:19px;margin-top:2px">
+      <span style="font-size:13.5px">ข้าพเจ้าอ่านและยินยอมให้บริษัทเก็บ ใช้ และเปิดเผยข้อมูลตามที่ระบุข้างต้น</span></label>
+    <button class="btn" id="ok" disabled>ยินยอมและเริ่มใช้งาน</button>
+  </main>`);
+  $('#app').innerHTML = '';
+  $('#app').append(el('<div class="appbar"><div class="ttl">ความยินยอมการใช้ข้อมูล</div></div>'), b);
+  $('#ag').onchange = e => $('#ok').disabled = !e.target.checked;
+  $('#ok').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    const { error } = await sb.from('consents').insert({
+      user_id: S.profile.id, version: CFG.consentVersion, device_label: navigator.userAgent.slice(0, 80) });
+    if (error) { e.target.disabled = false; return toast(friendly(error), 1); }
+    boot();
+  };
+}
+
+function viewProfile(first) {
+  const m = S.master, p = S.profile;
+  const locked = !!p.employee_code && !['admin', 'superadmin'].includes(p.role);
+  const b = el(`<main>
+    ${first ? '<div class="note i"><span>🪪</span><span>กรอกครั้งเดียว ครั้งต่อไประบบจำให้ — ข้อมูลนี้ใช้ประกอบการเบิกค่าเดินทาง</span></div>' : ''}
+    <div class="card"><h3>ข้อมูลพนักงาน</h3>
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:8px">
+        <label class="f"><span>ชื่อ-นามสกุล</span><input id="fn" value="${esc(p.full_name || '')}"></label>
+        <label class="f code"><span>รหัสพนักงาน ${locked ? '🔒' : ''}</span>
+          <input id="ec" value="${esc(p.employee_code || '')}" ${locked ? 'readonly' : ''}
+                 autocapitalize="characters" placeholder="80011786 / CMT1800500"></label>
+        <div class="hint">${locked ? 'ล็อกไว้แล้ว — แก้ได้โดย Admin เท่านั้น' : 'ตั้งได้ครั้งเดียว ตรวจให้แน่ใจก่อนบันทึก'}</div>
+        <label class="f"><span>Cost center</span><select id="cc">
+          <option value="">— เลือก —</option>
+          ${m.cost_centers.map(c => `<option value="${esc(c.code)}" ${c.code === p.cost_center_code ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+        </select></label>
+        <div class="hint" id="ccc">Cost center Code: <b class="mono">${esc(p.cost_center_code || '—')}</b> (ระบบเติมให้)</div>
+      </div></div>
+    ${S.quota?.state && S.quota.state !== 'no_quota' ? `<div class="card"><h3>โควต้า Fleet card</h3>
+      <div class="row"><div><div class="lb">โควต้า/เดือน</div><div class="vl mono">${nf(S.quota.quota, S.quota.unit === 'thb' ? 0 : 1)} ${S.quota.unit === 'thb' ? 'บาท' : 'ลิตร'}</div></div>
+      <div><div class="lb">ที่มา</div><div class="lb">${esc(S.quota.quota_note || 'ชีต Fleet Card - Quota')}</div></div></div></div>` : ''}
+    <button class="btn" id="ok">บันทึกข้อมูล</button>
+  </main>`);
+  shell(first ? 'ตั้งค่าข้อมูลพนักงาน' : 'ข้อมูลพนักงาน', [...b.childNodes],
+        { back: !first, tabs: !first, actions: false });
+  $('#cc').onchange = e => $('#ccc').innerHTML = 'Cost center Code: <b class="mono">' + esc(e.target.value || '—') + '</b> (ระบบเติมให้)';
+  $('#ok').onclick = async (e) => {
+    const fn = $('#fn').value.trim(), ec = $('#ec').value.trim().toUpperCase(), cc = $('#cc').value;
+    if (fn.length < 3) return toast('กรอกชื่อ-นามสกุล', 1);
+    if (!/^([0-9]{8}|[A-Z]{3}[0-9]{7})$/.test(ec))
+      return toast('รหัสพนักงานต้องเป็นตัวเลข 8 หลัก หรือตัวอักษร 3 + เลข 7 หลัก', 1);
+    if (!cc) return toast('เลือก Cost center', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    const { error } = await sb.from('profiles')
+      .update({ full_name: fn, employee_code: ec, cost_center_code: cc }).eq('id', S.profile.id);
+    if (error) { e.target.disabled = false; e.target.textContent = 'บันทึกข้อมูล'; return toast(friendly(error), 1); }
+    toast('บันทึกแล้ว'); boot();
+  };
+}
+
+function viewVehicle(opts = {}) {
+  // รถสำรองไม่ผ่านหน้านี้แล้ว — ต้องไปที่ viewBackupRequest (ขอ + อนุมัติ)
+  if (opts.backup) return go('backup');
+  const m = S.master, backup = false, v = opts.vehicle || null;
+  const today = new Date().toISOString().slice(0, 10);
+  const plus14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const b = el(`<main>
+    ${backup ? '<div class="note w"><span>⚠</span><span>รถสำรองต้องระบุช่วงวันที่ใช้ และ<b>ต้องให้หัวหน้าอนุมัติ</b>ก่อนเริ่มงาน</span></div>' : ''}
+    <div class="seg" id="own">
+      <button data-o="company" class="${(v?.ownership || 'company') === 'company' ? 'on' : ''}">🏢 รถบริษัท</button>
+      <button data-o="personal" class="${v?.ownership === 'personal' ? 'on' : ''}">👤 รถส่วนตัว</button></div>
+    <label class="f code"><span>ทะเบียนรถ (กรอกติดกัน ไม่เว้นวรรค)</span>
+      <input id="pl" autocapitalize="characters" placeholder="2กก7789" value="${esc(v?.plate || '')}"></label>
+    <label class="f"><span>จังหวัดที่จดทะเบียน</span><select id="pv"><option value="">— เลือก —</option>
+      ${m.provinces.map(p => `<option value="${p.id}" ${p.id === v?.province_id ? 'selected' : ''}>${esc(p.name_th)}</option>`).join('')}</select></label>
+    <div class="row">
+      <label class="f"><span>ยี่ห้อ</span><select id="br"><option value="">—</option>
+        ${m.brands.map(x => `<option value="${x.id}" ${x.id === v?.brand_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label class="f"><span>รุ่น</span><select id="md"><option value="">—</option></select></label>
+    </div>
+    <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="ft"><option value="">— เลือก —</option>
+      ${m.fuel_types.map(f => `<option value="${esc(f.code)}" ${f.code === v?.fuel_type ? 'selected' : ''}>${esc(f.name_th)}</option>`).join('')}</select></label>
+    <label class="f"><span>หมายเลข Fleet card (ถ้ามี)</span>
+      <input id="fc" value="${esc(v?.fleet_card_no || '')}" inputmode="numeric"></label>
+    <div class="hint">รถส่วนตัวที่ได้รับ Fleet card ก็กรอกได้ — ไม่บังคับทั้งสองแบบ</div>
+    ${backup ? `<div class="card"><h3>ช่วงเวลาที่ใช้รถสำรอง</h3><div class="row" style="margin-top:8px">
+        <label class="f"><span>ใช้ตั้งแต่</span><input id="uf" type="date" value="${today}"></label>
+        <label class="f"><span>ถึงวันที่</span><input id="ut" type="date" value="${plus14}"></label></div>
+        <div class="hint">ระบบจะเตือนล่วงหน้า 1 วันก่อนหมดกำหนด</div></div>` : ''}
+    <button class="btn" id="ok">${backup ? 'ส่งให้หัวหน้าอนุมัติ' : 'บันทึกข้อมูลรถ'}</button>
+  </main>`);
+  shell(backup ? 'ข้อมูลรถสำรอง' : (v ? 'แก้ไขข้อมูลรถ' : 'ข้อมูลรถหลัก'), [...b.childNodes],
+        { back: S.vehicles.length ? true : false, tabs: !!S.vehicles.length, actions: false });
+
+  let own = v?.ownership || 'company';
+  $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
+    own = x.dataset.o;
+    $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
+  });
+  const fillModels = () => {
+    const bid = +$('#br').value;
+    $('#md').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
+      .map(x => `<option value="${x.id}" ${x.id === v?.model_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  };
+  $('#br').onchange = fillModels; fillModels();
+
+  $('#ok').onclick = async (e) => {
+    const plate = $('#pl').value.toUpperCase().replace(/\s+/g, '');
+    if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
+    if (!$('#pv').value || !$('#br').value || !$('#md').value || !$('#ft').value)
+      return toast('กรอกข้อมูลรถให้ครบ', 1);
+    const row = {
+      user_id: S.profile.id, ownership: own, plate,
+      province_id: +$('#pv').value, brand_id: +$('#br').value, model_id: +$('#md').value,
+      fuel_type: $('#ft').value, fleet_card_no: $('#fc').value.trim() || null,
+      is_primary: !backup && !S.vehicles.some(x => x.is_primary && x.id !== v?.id),
+      is_backup: backup, active: true,
+      approval_status: backup ? 'pending' : 'approved',
+      use_from: backup ? $('#uf').value : null, use_to: backup ? $('#ut').value : null,
+    };
+    if (backup && row.use_to < row.use_from) return toast('วันสิ้นสุดต้องไม่ก่อนวันเริ่มใช้', 1);
+    if (!backup && !S.vehicles.length) row.is_primary = true;
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    if (row.is_primary) await sb.from('vehicles').update({ is_primary: false }).eq('user_id', S.profile.id);
+    const q = v ? sb.from('vehicles').update(row).eq('id', v.id) : sb.from('vehicles').insert(row);
+    const { error } = await q;
+    if (error) { e.target.disabled = false; e.target.textContent = 'บันทึก'; return toast(friendly(error), 1); }
+    toast(backup ? 'ส่งคำขอให้หัวหน้าแล้ว' : 'บันทึกข้อมูลรถแล้ว');
+    boot();
+  };
+}
+
+/* ==================================================================== */
+/*  ขอใช้รถสำรองชั่วคราว                                                 */
+/* ==================================================================== */
+/* พนักงานสร้างรถสำรองเองไม่ได้ (RLS ปิดไว้ใน sql/11_backup_vehicle.sql)
+   ต้องยื่นคำขอ ระบุช่วงวันที่ แล้วหัวหน้าอนุมัติ ระบบจึงสร้างรถให้
+   พ้นกำหนดแล้ว cron ปิดรถให้เอง โมดูลบนหน้าหลักหายไปเอง */
+async function viewBackupRequest() {
+  const m = S.master, main = primaryVehicle();
+  if (!main) { toast('ต้องมีรถประจำก่อน จึงจะขอรถสำรองได้', 1); return go('garage'); }
+
+  // มีคำขอค้างอยู่ หรือมีรถสำรองที่ใช้ได้แล้ว -> ไม่ให้ยื่นซ้ำ
+  let st = null;
+  try { const { data } = await sb.rpc('my_backup_status'); st = data; } catch {}
+  if (st?.pending_request) {
+    const p = st.pending_request;
+    return shell('ขอใช้รถสำรองชั่วคราว', [
+      el(`<div class="note w"><span>⏳</span><span><b>มีคำขอรออนุมัติอยู่แล้ว</b><br>
+        รถ <span class="mono">${esc(p.plate)}</span> · ช่วง ${esc(p.from)} ถึง ${esc(p.to)}<br>
+        ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน หรือดูสถานะที่แท็บ "คำขอ"</span></div>`),
+      el('<button class="btn gh" id="bk2">ดูคำขอของฉัน</button>'),
+    ], { back: () => go('home'), tabs: true, actions: false }),
+      ($('#bk2').onclick = () => go('requests'));
+  }
+  if (st?.show_module) {
+    return shell('ขอใช้รถสำรองชั่วคราว', [
+      el(`<div class="note g"><span>✓</span><span><b>คุณมีรถสำรองที่ใช้ได้อยู่แล้ว</b><br>
+        <span class="mono">${esc(st.vehicle.plate)}</span> ใช้ได้ถึง ${esc(st.vehicle.use_to)}
+        (อีก ${st.vehicle.days_left} วัน)<br>
+        ยื่นคำขอใหม่ได้เมื่อคันนี้พ้นกำหนดแล้ว</span></div>`),
+    ], { back: () => go('home'), tabs: true, actions: false });
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const plus7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  let own = 'personal';
+
+  const b = el(`<main>
+    <div class="note i"><span>🔧</span><span>ใช้เมื่อ<b>รถประจำใช้งานไม่ได้ชั่วคราว</b>
+      เช่น รถเสีย เข้าอู่ ต้องใช้รถคันอื่นแทน<br>
+      ต้องระบุช่วงวันที่ให้ชัดเจน และหัวหน้าอนุมัติก่อนจึงใช้ได้</span></div>
+
+    <div class="card"><h3>รถประจำของคุณ</h3>
+      <div class="mono" style="font-size:17px;font-weight:800;letter-spacing:1px;margin-top:5px">${esc(main.plate)}</div>
+      <div class="lb">${esc(main.brand_name || '')} ${esc(main.model_name || '')} ·
+        ${esc(main.fuel_name || '')}${main.fleet_card_no ? ' · Fleet ' + esc(main.fleet_card_no) : ''}</div></div>
+
+    <div class="card"><h3>ช่วงวันที่จะใช้รถสำรอง</h3>
+      <div class="sub">ระบุให้ตรงความจริง พ้นวันสุดท้ายแล้วระบบปิดให้เองทันที</div>
+      <div class="row">
+        <label class="f"><span>ใช้ตั้งแต่</span><input id="bf" type="date" value="${today}"></label>
+        <label class="f"><span>ถึงวันที่</span><input id="bt" type="date" value="${plus7}"></label></div>
+      <div class="hint" id="bdays"></div></div>
+
+    <div class="card"><h3>ข้อมูลรถสำรอง</h3>
+      <div class="seg" id="own" style="margin-top:8px">
+        <button data-o="personal" class="on">👤 รถส่วนตัว</button>
+        <button data-o="company">🏢 รถบริษัท</button></div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        <label class="f code"><span>ทะเบียนรถ (กรอกติดกัน ไม่เว้นวรรค)</span>
+          <input id="bp" autocapitalize="characters" placeholder="2กก7789"></label>
+        <label class="f"><span>จังหวัดที่จดทะเบียน</span><select id="bpv"><option value="">— เลือก —</option>
+          ${m.provinces.map(p => `<option value="${p.id}">${esc(p.name_th)}</option>`).join('')}</select></label>
+        <div class="row">
+          <label class="f"><span>ยี่ห้อ</span><select id="bbr"><option value="">—</option>
+            ${m.brands.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+          <label class="f"><span>รุ่น</span><select id="bmd"><option value="">—</option></select></label></div>
+        <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="bft"><option value="">— เลือก —</option>
+          ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
+        <div id="fuelwarn"></div>
+        <label class="f"><span>หมายเลข Fleet card ของรถคันนี้ (ถ้ามี)</span>
+          <input id="bfc" inputmode="numeric"></label>
+      </div></div>
+
+    <label class="f"><span>เหตุผล (บังคับ)</span>
+      <textarea id="br" placeholder="เช่น รถประจำเข้าอู่เปลี่ยนคลัตช์ ใช้รถของภรรยาไปก่อน"></textarea></label>
+
+    <div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
+      S.profile.supervisor_employee_code
+        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ (รหัส ' + esc(S.profile.supervisor_employee_code) + ')'
+        : 'ยังไม่มีข้อมูลหัวหน้างานในระบบ — คำขอจะถูกบันทึกไว้แต่ยังไม่มีใครอนุมัติได้ แจ้ง Admin'}</span></div>
+
+    <button class="btn" id="bsub">ส่งคำขอให้หัวหน้าอนุมัติ</button>
+  </main>`);
+
+  shell('ขอใช้รถสำรองชั่วคราว', [...b.childNodes],
+        { back: () => go('home'), tabs: true, actions: false });
+
+  $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
+    own = x.dataset.o;
+    $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
+  });
+
+  const fillModels = () => {
+    const bid = +$('#bbr').value;
+    $('#bmd').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
+      .map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  };
+  $('#bbr').onchange = fillModels;
+
+  // เตือนทันทีถ้าชนิดน้ำมันต่างจากรถประจำ — Fleet card ใบเดิมเติมไม่ได้
+  const checkFuel = () => {
+    const box = $('#fuelwarn'); box.innerHTML = '';
+    const f = $('#bft').value;
+    if (!f || f === main.fuel_type) return;
+    const name = (m.fuel_types.find(x => x.code === f) || {}).name_th || f;
+    box.append(el(`<div class="note e"><span>⛽</span><span>
+      <b>ชนิดน้ำมันต่างจากรถประจำ</b> (${esc(main.fuel_name || main.fuel_type)} → ${esc(name)})<br>
+      Fleet card ของบริษัทผูกกับทะเบียนและชนิดน้ำมัน <b>ใช้บัตรใบเดิมเติมไม่ได้</b><br>
+      ต้องสำรองจ่ายแล้วเบิกคืน หรือแจ้งบัญชีจัดบัตรให้ — ระบุเรื่องนี้ในเหตุผลด้วย</span></div>`));
+  };
+  $('#bft').onchange = checkFuel;
+
+  const showDays = () => {
+    const f = $('#bf').value, t = $('#bt').value;
+    if (!f || !t) return;
+    const d = Math.round((new Date(t) - new Date(f)) / 864e5) + 1;
+    $('#bdays').textContent = d > 0
+      ? `รวม ${d} วัน (ขอครั้งละไม่เกิน 30 วัน ถ้าต้องใช้นานกว่านั้นยื่นคำขอใหม่)`
+      : 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มใช้';
+  };
+  $('#bf').onchange = showDays; $('#bt').onchange = showDays; showDays();
+
+  $('#bsub').onclick = async (e) => {
+    const plate = $('#bp').value.toUpperCase().replace(/\s+/g, '');
+    if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
+    if (!$('#bpv').value || !$('#bbr').value || !$('#bmd').value || !$('#bft').value)
+      return toast('กรอกข้อมูลรถสำรองให้ครบ', 1);
+    if ($('#br').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
+    if ($('#bt').value < $('#bf').value) return toast('วันสิ้นสุดต้องไม่ก่อนวันเริ่มใช้', 1);
+
+    e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+    const { data, error } = await sb.rpc('submit_backup_vehicle_request', {
+      p_plate: plate, p_province_id: +$('#bpv').value,
+      p_brand_id: +$('#bbr').value, p_model_id: +$('#bmd').value,
+      p_fuel_type: $('#bft').value, p_ownership: own,
+      p_fleet_card: $('#bfc').value.trim() || null,
+      p_from: $('#bf').value, p_to: $('#bt').value,
+      p_reason: $('#br').value.trim() });
+
+    if (error || data?.ok !== true) {
+      e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
+      return toast(({
+        NO_PRIMARY_VEHICLE: 'ต้องมีรถประจำในระบบก่อน',
+        BAD_PLATE: 'ทะเบียนรถไม่ถูกต้อง',
+        SAME_AS_PRIMARY: 'ทะเบียนซ้ำกับรถประจำของคุณ',
+        BAD_FUEL_TYPE: 'ชนิดน้ำมันไม่ถูกต้อง',
+        NO_REASON: 'ต้องกรอกเหตุผล',
+        NO_DATE_RANGE: 'ต้องระบุช่วงวันที่',
+        BAD_DATE_RANGE: 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มใช้',
+        FROM_IN_PAST: 'วันเริ่มใช้ย้อนหลังเกินไป',
+        RANGE_TOO_LONG: 'ขอได้ครั้งละไม่เกิน ' + (data?.max_days || 30) + ' วัน',
+        ALREADY_HAS_BACKUP: 'คุณมีรถสำรองที่ยังใช้ได้อยู่แล้ว',
+        REQUEST_PENDING: 'มีคำขอรออนุมัติอยู่แล้ว',
+      })[data?.code] || (error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ'), 1);
+    }
+
+    toast(data.has_supervisor
+      ? `ส่งคำขอแล้ว (${data.days} วัน) รอหัวหน้าอนุมัติ`
+      : 'บันทึกคำขอแล้ว แต่ยังไม่พบหัวหน้าในระบบ');
+    if (data.fuel_warning) alertLike(data.fuel_warning);
+    go('requests');
+  };
+}
+
+/* แจ้งเตือนยาว ๆ ที่ toast แสดงไม่พอ */
+function alertLike(text) {
+  const d = el(`<div class="dlg"><h3>⛽ ข้อควรทราบเรื่อง Fleet card</h3>
+    <div style="font-size:13.5px;white-space:pre-line">${esc(text)}</div>
+    <button class="btn" id="ok2">รับทราบ</button></div>`);
+  overlay(d);
+  $('#ok2').onclick = closeOverlay;
+}
+
+/* ==================================================================== */
+/*  หน้าหลัก                                                            */
+/* ==================================================================== */
+/* รถประจำ (ถาวร) — มีได้คนละคันเดียวตามกฎ Fleet card ผูกทะเบียน + ชนิดน้ำมัน */
+function primaryVehicle() {
+  return S.vehicles.find(v => !v.is_backup && v.approval_status === 'approved')
+      || S.vehicles.find(v => !v.is_backup) || null;
+}
+
+/* รถสำรองที่ "ใช้ได้วันนี้" — อนุมัติแล้ว + อยู่ในช่วงวันที่
+   เงื่อนไขเดียวที่ทำให้โมดูล "วันนี้ใช้รถสำรอง" โผล่ขึ้นมา
+   พ้นกำหนดแล้วต้องยื่นคำขอใหม่และรอหัวหน้าอนุมัติ จึงจะกลับมา */
+function activeBackup() {
+  const t = new Date().toISOString().slice(0, 10);
+  return S.vehicles.find(v => v.is_backup && v.approval_status === 'approved'
+    && v.use_from && v.use_to && v.use_from <= t && v.use_to >= t) || null;
+}
+
+function daysLeft(iso) {
+  return Math.round((new Date(iso + 'T00:00:00') - new Date(new Date().toDateString())) / 864e5);
+}
+
+function pickedVehicle() {
+  const bk = activeBackup();
+  // ติ๊ก "วันนี้ใช้รถสำรอง" ได้เฉพาะตอนมีรถสำรองที่ใช้ได้จริง
+  if (LS.get('useBackup') && bk) return bk;
+  if (LS.get('useBackup') && !bk) LS.set('useBackup', false);   // ล้างค่าที่ค้าง
+  return primaryVehicle() || S.vehicles[0] || null;
+}
+function usableToday(v) {
+  if (!v) return false;
+  if (v.approval_status !== 'approved') return false;
+  if (!v.is_backup) return true;
+  const t = new Date().toISOString().slice(0, 10);
+  if (v.use_from && t < v.use_from) return false;
+  if (v.use_to && t > v.use_to) return false;
+  return true;
+}
+
+function quotaCard(compact) {
+  const q = S.quota;
+  if (!q || q.state === 'no_quota')
+    return el(`<div class="note i"><span>⛽</span><span>ยังไม่ได้กำหนดโควต้า Fleet card ของคุณ — แจ้ง Admin</span></div>`);
+  const unit = q.unit === 'thb' ? 'บาท' : 'ลิตร', dg = q.unit === 'thb' ? 0 : 1;
+  const pct = Math.min((q.used_pct || 0) * 100, 130);
+  const cls = q.state === 'exceeded' ? 'e' : q.state === 'near' ? 'w' : '';
+  const col = q.state === 'exceeded' ? 'var(--r)' : q.state === 'near' ? 'var(--warn)' : '#00713F';
+  const mon = q.month ? thDate(new Date(q.month)) .replace(/^\d+ /, '') : '';
+  return el(`<div class="card">
+    <div style="display:flex;align-items:center;gap:7px">
+      <span>⛽</span><div class="vl" style="flex:1;font-size:13.5px">โควต้า Fleet card ${esc(mon)}</div>
+      <span class="pill ${cls === 'e' ? 'e' : cls === 'w' ? 'w' : 'g'}">ใช้ไป ${Math.round((q.used_pct || 0) * 100)}%</span></div>
+    <div class="bar" style="margin:9px 0"><i class="${cls}" style="width:${Math.min(pct, 100)}%"></i></div>
+    <div style="display:flex">
+      <div><div class="lb">ใช้ไป</div><div class="vl mono" style="font-size:16px">${nf(q.used, dg)} ${unit}</div></div>
+      <div class="sp"></div>
+      <div style="text-align:right"><div class="lb">${q.state === 'exceeded' ? 'เกินโควต้า' : 'เหลือ'}</div>
+        <div class="vl mono" style="font-size:16px;color:${col}">
+          ${nf(q.state === 'exceeded' ? q.used - q.quota : q.remaining, dg)} ${unit}</div></div></div>
+    ${compact ? '' : (q.quota_note ? `<div class="lb" style="font-size:10px;margin-top:6px">${esc(q.quota_note)}</div>` : '')}
+    ${(q.state === 'near' || q.state === 'exceeded') ? `<div class="note w" style="margin-top:9px"><span>🗺</span><span>
+      <b>กรุณาวางแผนการเดินทางอย่างรอบคอบทุกครั้งก่อนเดินทาง</b></span></div>` : ''}
+  </div>`);
+}
+
+function viewHome() {
+  S.tab = 'home';
+  const v = pickedVehicle();
+  const t = S.trip;
+  const nodes = [];
+
+  nodes.push(el(`<div>
+    <h2>${esc(S.profile.full_name || '—')}</h2>
+    <div class="lb mono">${esc(S.profile.employee_code || '—')}${S.profile.is_supervisor ? ' · หัวหน้างาน' : ''}</div></div>`));
+
+  if (!S.online) nodes.push(el(`<div class="note w"><span>📴</span><span>ออฟไลน์ — บันทึกได้ปกติ ข้อมูลจะส่งขึ้นระบบเองเมื่อมีสัญญาณ</span></div>`));
+  if (S.pending) nodes.push(el(`<div class="note i"><span>☁</span><span>รอส่งขึ้นระบบ ${S.pending} รายการ</span></div>`));
+
+  nodes.push(quotaCard());
+
+  const vc = el(`<div class="card"><div style="display:flex;align-items:center">
+      <h3 style="flex:1">รถที่ใช้ในรอบการทำงานนี้</h3>
+      <button class="link" id="chv" style="padding:0">ดู / แก้ไข</button></div>
+    ${v ? `<div style="display:flex;gap:11px;align-items:center;margin-top:9px">
+      <div style="font-size:24px">${v.ownership === 'company' ? '🚚' : '🚗'}</div>
+      <div style="flex:1"><div class="mono" style="font-size:19px;font-weight:800;letter-spacing:1px">${esc(v.plate)}</div>
+      <div class="lb">${esc(v.brand_name || '')} ${esc(v.model_name || '')} ·
+        ${v.ownership === 'company' ? 'รถบริษัท' : 'รถส่วนตัว'} · ${esc(v.fuel_name || '')}</div></div>
+      ${v.is_backup ? '<span class="pill w">รถสำรอง</span>' : ''}</div>
+      ${v.is_backup ? `<div class="note ${usableToday(v) ? 'w' : 'e'}" style="margin-top:9px"><span>📅</span><span>${
+        v.approval_status === 'pending' ? 'รอหัวหน้าอนุมัติ — ยังใช้เริ่มงานไม่ได้'
+        : (v.use_to && new Date().toISOString().slice(0,10) > v.use_to)
+          ? 'เลยกำหนดใช้งาน (' + esc(v.use_to) + ') กรุณายื่นคำขอต่ออายุ'
+          : 'ใช้ได้ถึง ' + esc(v.use_to || '-')}</span></div>` : ''}`
+      : '<div class="note w" style="margin-top:9px"><span>⚠</span><span>ยังไม่มีรถในระบบ กด "เปลี่ยนรถ" เพื่อเพิ่ม</span></div>'}
+  </div>`);
+  nodes.push(vc);
+
+  if (!t) {
+    const bk = activeBackup();
+    if (bk) {
+      // มีรถสำรองที่อนุมัติแล้วและยังไม่หมดกำหนด -> โชว์โมดูล
+      const left = daysLeft(bk.use_to);
+      nodes.push(el(`<div class="card" style="border-color:var(--y-dk);border-width:2px">
+        <label style="display:flex;gap:10px;align-items:flex-start">
+          <input type="checkbox" id="bkc" style="width:19px;height:19px;margin-top:2px"
+                 ${LS.get('useBackup') ? 'checked' : ''}>
+          <span><b>วันนี้ใช้รถสำรอง</b> <span class="mono">${esc(bk.plate)}</span><br>
+          <span class="lb">${esc(bk.brand_name || '')} ${esc(bk.model_name || '')} ·
+            ${esc(bk.fuel_name || '')}</span></span></label>
+        <div class="note ${left <= 1 ? 'e' : 'w'}" style="margin-top:9px"><span>📅</span><span>
+          ใช้ได้ถึง <b>${esc(bk.use_to)}</b> ${left <= 0 ? '(วันสุดท้ายวันนี้)' : '(อีก ' + left + ' วัน)'}<br>
+          พ้นกำหนดแล้วโมดูลนี้จะหายไปเอง ระบบกลับไปใช้รถประจำ —
+          ถ้ายังต้องใช้ต่อ ต้องยื่นคำขอใหม่ให้หัวหน้าอนุมัติ</span></div></div>`));
+    } else {
+      // ไม่มีรถสำรอง -> ไม่โชว์โมดูล แต่บอกทางไว้เผื่อรถเสีย
+      nodes.push(el(`<div class="card">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="font-size:19px">🔧</span>
+          <div style="flex:1"><b style="font-size:13.5px">รถเสีย ต้องใช้รถคันอื่นชั่วคราว?</b>
+            <div class="lb">ยื่นคำขอใช้รถสำรอง ระบุช่วงวันที่ที่จะใช้
+              หัวหน้าอนุมัติแล้วจะใช้ได้ตามช่วงวันที่นั้น</div></div></div>
+        <button class="btn gh" id="askbk" style="margin-top:10px">ขอใช้รถสำรองชั่วคราว</button></div>`));
+    }
+    nodes.push(el(`<button class="btn lg" id="start">▶  เริ่มปฏิบัติงาน</button>`));
+    nodes.push(el(`<div class="note g"><span>🔒</span><span>ระบบจะเริ่มบันทึกเส้นทางเมื่อกดปุ่มนี้ และหยุดทันทีที่กด "สิ้นสุดการทำงาน"</span></div>`));
+  } else {
+    const open = (t.stops || []).filter(s => !s.job_type_code).length;
+    nodes.push(el(`<div class="card" style="border:2px solid var(--g)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--g)">◉</span><h3 style="flex:1">กำลังปฏิบัติงานอยู่</h3>
+        <span class="vl">${dur(Date.now() - new Date(t.startAt))}</span></div>
+      ${open ? `<div class="note w" style="margin-top:9px"><span>📍</span><span>มีจุดที่แวะ ${open} จุดยังไม่ได้ระบุ</span></div>` : ''}
+      <div class="row" style="margin-top:10px">
+        <div class="stat"><div class="lb">ระยะทาง GPS</div><div class="v">${nf(t.distM / 1000)}<small>กม.</small></div></div>
+        <div class="stat"><div class="lb">จุดพิกัด</div><div class="v">${(t.points || []).length}<small>จุด</small></div></div></div>
+      <button class="btn" id="open" style="margin-top:11px">เปิดหน้างานที่กำลังทำ</button></div>`));
+  }
+
+  shell(CFG.appName, nodes, { tabs: true });
+  if ($('#chv')) $('#chv').onclick = () => go('garage');
+  if ($('#askbk')) $('#askbk').onclick = () => go('backup');
+  if ($('#bkc')) $('#bkc').onchange = e => {
+    LS.set('useBackup', e.target.checked);
+    toast(e.target.checked ? 'เลือกใช้รถสำรองสำหรับรอบนี้' : 'กลับไปใช้รถประจำ');
+    go('home');
+  };
+  if ($('#start')) $('#start').onclick = startFlow;
+  if ($('#open')) $('#open').onclick = () => go('active');
+  checkBackupExpiry();
+}
+
+function checkBackupExpiry() {
+  if (S._expShown) return;
+  const t = new Date().toISOString().slice(0, 10);
+  const soon = S.vehicles.filter(v => v.is_backup && v.use_to &&
+    (new Date(v.use_to) - new Date(t)) / 864e5 <= 1);
+  if (!soon.length) return;
+  S._expShown = true;
+  const v = soon[0], late = v.use_to < t;
+  const d = el(`<div class="dlg" data-dismiss="no">
+    <div style="font-size:30px;text-align:center">📅</div>
+    <h3>รถสำรอง ${esc(v.plate)} ${late ? 'หมดกำหนดใช้งานแล้ว' : 'ใกล้หมดกำหนด'}</h3>
+    <div style="font-size:13.5px">กำหนดใช้ถึง ${esc(v.use_to)}<br>
+      ${late ? 'ต้องต่ออายุก่อนจึงจะใช้รถคันนี้เริ่มงานได้' : 'ถ้ายังต้องใช้ต่อ กรุณายื่นคำขอต่ออายุให้หัวหน้าอนุมัติ'}</div>
+    <button class="btn" id="rq">ยื่นคำขอต่ออายุ</button>
+    <button class="link" id="cl">ไว้ก่อน</button></div>`);
+  overlay(d);
+  $('#rq').onclick = () => { closeOverlay(); go('requests', { preset: 'backup_extend', vehicle: v }); };
+  $('#cl').onclick = closeOverlay;
+}
+
+/* ==================================================================== */
+/*  โรงรถ                                                               */
+/* ==================================================================== */
+function viewGarage() {
+  const nodes = S.vehicles.map(v => {
+    const c = el(`<div class="card" style="${pickedVehicle()?.id === v.id ? 'border:2px solid var(--y-dk)' : ''}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">${v.ownership === 'company' ? '🚚' : '🚗'}</span>
+        <div style="flex:1"><div class="mono" style="font-size:18px;font-weight:800;letter-spacing:1px">${esc(v.plate)}</div>
+          <div class="lb">${esc(v.brand_name || '')} ${esc(v.model_name || '')} · ${esc(v.province_name || '')}</div></div>
+        ${v.is_primary ? '<span class="pill g">รถหลัก</span>' : v.is_backup ? '<span class="pill w">สำรอง</span>' : ''}</div>
+      <div class="lb" style="margin-top:6px">${v.ownership === 'company' ? 'รถบริษัท' : 'รถส่วนตัว'} · ${esc(v.fuel_name || '')}${v.fleet_card_no ? ' · Fleet ' + esc(v.fleet_card_no) : ''}
+        ${v.is_backup ? ' · ' + esc(v.use_from || '') + ' ถึง ' + esc(v.use_to || '') : ''}
+        ${v.approval_status === 'pending' ? ' · <b style="color:var(--warn)">รออนุมัติ</b>' : ''}</div>
+      ${v.is_backup ? '' : `<button class="btn gh" data-ed="${v.id}"
+        style="margin-top:10px">แก้ไขข้อมูลรถ</button>`}</div>`);
+    return c;
+  });
+  const hasMain = !!primaryVehicle();
+  if (!hasMain) {
+    nodes.push(el('<button class="btn" id="addm">+ เพิ่มรถประจำของคุณ</button>'));
+  } else {
+    nodes.push(el(`<div class="note i"><span>🪪</span><span>
+      <b>พนักงาน 1 คน มีรถประจำได้คันเดียว</b><br>
+      เพราะ Fleet card ของบริษัทผูกกับ<b>ป้ายทะเบียน</b>และ<b>ชนิดน้ำมัน</b>
+      เติมข้ามประเภทไม่ได้ (เก๋งเบนซิน → กระบะดีเซล ใช้บัตรเดิมไม่ได้)<br>
+      เปลี่ยนรถประจำถาวร ให้ยื่นคำขอที่แท็บ "คำขอ"</span></div>`));
+    nodes.push(el('<button class="btn gh" id="addb">🔧 ขอใช้รถสำรองชั่วคราว</button>'));
+    nodes.push(el(`<div class="hint">ใช้เฉพาะกรณีรถเสีย เข้าอู่ หรือต้องใช้รถคันอื่นชั่วคราว
+      — ต้องระบุช่วงวันที่ และหัวหน้าอนุมัติก่อน</div>`));
+  }
+  shell('โรงรถของฉัน', nodes, { back: () => go('home'), tabs: true });
+  document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () =>
+    viewVehicle({ vehicle: S.vehicles.find(x => x.id === b.dataset.ed) }));
+  if ($('#addm')) $('#addm').onclick = () => viewVehicle({});
+  if ($('#addb')) $('#addb').onclick = () => go('backup');
+}
+
+/* ==================================================================== */
+/*  GPS + การติดตาม                                                     */
+/* ==================================================================== */
+function getPos(timeout = 20000) {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('เครื่องนี้ไม่รองรับ GPS'));
+    navigator.geolocation.getCurrentPosition(
+      p => res(p), e => rej(e),
+      { enableHighAccuracy: true, timeout, maximumAge: 0 });
+  });
+}
+
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator && !S.wakeLock) {
+      S.wakeLock = await navigator.wakeLock.request('screen');
+      S.wakeLock.addEventListener('release', () => S.wakeLock = null);
+    }
+  } catch { /* บางเครื่อง/บางเบราว์เซอร์ไม่รองรับ */ }
+}
+function releaseAwake() { try { S.wakeLock?.release(); } catch {} S.wakeLock = null; }
+
+function startWatch() {
+  if (S.watchId != null || !navigator.geolocation) return;
+  S.watchId = navigator.geolocation.watchPosition(onPos,
+    e => console.warn('gps', e.message),
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+  keepAwake();
+}
+function stopWatch() {
+  if (S.watchId != null) navigator.geolocation.clearWatch(S.watchId);
+  S.watchId = null; releaseAwake();
+}
+
+function onPos(p) {
+  const t = S.trip; if (!t) return;
+  const c = p.coords, now = p.timestamp || Date.now();
+  S.lastPos = p;
+
+  // watchPosition ยิงได้ถึงวินาทีละครั้ง — ทริป 10 ชม. จะได้หลายหมื่นจุด
+  // localStorage มีแค่ ~5MB เก็บไม่ไหว จึงเว้นช่วงขั้นต่ำก่อนบันทึก
+  // (ยังคิดระยะจากทุกจุดที่บันทึก ความคลาดเคลื่อนที่ 3 วินาทีถือว่ารับได้)
+  const lastPt = t.points[t.points.length - 1];
+  if (lastPt && (now - new Date(lastPt.at)) < CFG.gpsMinGapSec * 1000) return;
+
+  t.points.push({ at: new Date(now).toISOString(), lat: c.latitude, lng: c.longitude,
+    acc: c.accuracy, spd: c.speed, hdg: c.heading, alt: c.altitude });
+
+  // นับระยะแบบกรองสัญญาณ — ไม่กรองระยะจะบวมเกินจริงเพราะ GPS สั่นตอนจอด
+  if (c.accuracy != null && c.accuracy <= CFG.gpsMaxAccuracyM) {
+    const last = t._counted;
+    if (!last) t._counted = { lat: c.latitude, lng: c.longitude, at: now };
+    else {
+      const d = haversineM(last.lat, last.lng, c.latitude, c.longitude);
+      const secs = Math.max((now - last.at) / 1000, .001);
+      if (d >= CFG.gpsMinMoveM) {
+        if (d / secs <= CFG.gpsMaxSpeedMps) t.distM += d;
+        t._counted = { lat: c.latitude, lng: c.longitude, at: now };
+      }
+    }
+  }
+  checkDwell(c, now);
+  prunePoints();
+  saveTrip();
+  if (S.view === 'active') paintActive();
+  if (S.view === 'home') { /* หน้าหลักอัปเดตตอน render ถัดไป */ }
+}
+
+/* จุดที่ส่งขึ้นระบบแล้วไม่ต้องเก็บครบในเครื่อง — เหลือไว้พอวาดเส้นทาง
+   ทริปยาวมากจะได้ไม่ชนเพดาน localStorage แล้วข้อมูลหายทั้งก้อน */
+function prunePoints() {
+  const t = S.trip;
+  if (!t || t.points.length <= CFG.keepPointsInDevice) return;
+  const sent = t.points.filter(p => p._s), unsent = t.points.filter(p => !p._s);
+  if (sent.length < 200) return;                  // ยังส่งไม่ทัน อย่าทิ้ง
+  const keep = Math.max(CFG.keepPointsInDevice - unsent.length, 100);
+  const step = Math.ceil(sent.length / keep);
+  const thin = sent.filter((_, i) => i % step === 0 || i === sent.length - 1);
+  t.points = thin.concat(unsent);
+  t._pruned = (t._pruned || 0) + (sent.length - thin.length);
+}
+
+/* แวะเกิน 30 นาที = stamp พิกัดให้เอง แล้วให้ผู้ใช้เลือกว่าแวะทำอะไร */
+function checkDwell(c, now) {
+  const t = S.trip;
+  if (!S.dwellAnchor) { S.dwellAnchor = { lat: c.latitude, lng: c.longitude }; S.dwellSince = now; return; }
+  const moved = haversineM(S.dwellAnchor.lat, S.dwellAnchor.lng, c.latitude, c.longitude);
+  if (moved > CFG.dwellRadiusM) {
+    if (S.dwellStopId) {
+      const st = t.stops.find(s => s.id === S.dwellStopId);
+      if (st && !st.depart_at) { st.depart_at = new Date(now).toISOString();
+        st.depart_lat = c.latitude; st.depart_lng = c.longitude; st._dirty = 1; }
+      S.dwellStopId = null;
+    }
+    S.dwellAnchor = { lat: c.latitude, lng: c.longitude }; S.dwellSince = now; return;
+  }
+  const mins = Math.floor((now - S.dwellSince) / 60000);
+  if (mins < CFG.dwellMinutes || S.dwellStopId) return;
+
+  const id = uuid();
+  t.stops.push({ id, session_id: t.id, seq: t.stops.length + 1, job_type_code: null,
+    source: 'auto_dwell', dwell_minutes: mins, needs_reason: true,
+    arrive_at: new Date(S.dwellSince).toISOString(),
+    arrive_lat: S.dwellAnchor.lat, arrive_lng: S.dwellAnchor.lng, _dirty: 1 });
+  S.dwellStopId = id; S.pendingDwell = { id, mins };
+  saveTrip();
+  toast(`ตรวจพบว่าคุณแวะที่นี่ ${mins} นาที — ช่วยระบุว่าแวะทำอะไร`);
+  if (S.view === 'active') askDwell(id, mins);
+}
+
+/* เตือน 21:00 ที่ตัวเอง · 22:00 ระบบฝั่งเซิร์ฟเวอร์แจ้งหัวหน้า */
+function checkCurfew() {
+  if (!S.trip) return;
+  const h = new Date().getHours();
+  if (h >= CFG.curfewUserHour && S.curfewWarned < 1) {
+    S.curfewWarned = 1;
+    toast(`ใกล้ ${CFG.curfewSupHour}:00 — ถ้าเลิกงานแล้วกรุณากดสิ้นสุดการทำงาน`, 1);
+  }
+  if (h >= CFG.curfewSupHour && S.curfewWarned < 2) {
+    S.curfewWarned = 2;
+    toast(`เลย ${CFG.curfewSupHour}:00 แล้วยังไม่ปิดงาน — ระบบแจ้งหัวหน้างานของคุณแล้ว`, 1);
+  }
+}
+
+/* ==================================================================== */
+/*  ทริป: เริ่ม / ระหว่าง / จบ                                            */
+/* ==================================================================== */
+function saveTrip() { if (S.trip) LS.set('trip', S.trip); }
+
+async function startFlow() {
+  const v = pickedVehicle();
+  if (!v) return toast('ยังไม่มีรถในระบบ', 1);
+  if (!usableToday(v)) return toast(
+    v.approval_status === 'pending' ? 'รถสำรองคันนี้ยังรอหัวหน้าอนุมัติ' : 'รถคันนี้เลยกำหนดใช้งาน', 1);
+  if (!window.isSecureContext) return toast('ต้องเปิดผ่าน https จึงจะใช้ GPS ได้', 1);
+  loading('กำลังขอสิทธิ์และจับพิกัด GPS…');
+  try {
+    const p = await getPos();
+    viewTripStart(p);
+  } catch (e) {
+    viewHome();
+    toast(e.code === 1 ? 'ไม่อนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน'
+                       : 'จับพิกัดไม่ได้ ลองออกไปที่โล่งแล้วลองใหม่', 1);
+  }
+}
+
+/* AI อ่านรูปไม่ออก = ภาพไม่ชัด ต้องถ่ายใหม่ก่อนจึงจะบันทึกได้
+   บอกให้ชัดว่าต้องทำอะไร ไม่ใช่แค่บอกว่าอ่านไม่ได้ */
+function showUnclear(inputId, hintId) {
+  const box = document.getElementById(hintId);
+  box.innerHTML = '';
+  box.append(el(`<div class="note e" style="margin-top:4px"><span>🚫</span><span>
+    <b>ภาพไม่ชัด ระบบอ่านเลขไมล์ไม่ออก</b><br>
+    กรุณาถ่ายใหม่ให้เห็นตัวเลขบนหน้าปัดครบทุกหลัก — จับให้นิ่ง ไม่ย้อนแสง
+    ไม่มีเงาหรือแสงสะท้อนทับตัวเลข<br>
+    <b>แนบรูปใหม่ก่อนจึงจะบันทึกเข้าระบบได้</b></span></div>`));
+  const inp = document.getElementById(inputId);
+  if (inp) inp.value = '';                 // ให้เลือกไฟล์เดิมซ้ำได้ถ้าถ่ายใหม่แล้ว
+  toast('ภาพไม่ชัด กรุณาถ่ายรูปเลขไมล์ใหม่', 1);
+}
+
+function photoField(id, label) {
+  return `<div id="${id}box">
+    <div class="ph" id="${id}ph"><span style="font-size:22px">📷</span><span>${label}</span></div>
+    <label class="btn gh" style="margin-top:9px;display:block;text-align:center;cursor:pointer">
+      ถ่ายรูป<input type="file" id="${id}" accept="image/*" capture="environment" class="hide"></label></div>`;
+}
+
+/* คืนค่า { status, data }
+     'read'        = AI อ่านตัวเลขได้
+     'unreadable'  = AI ตอบกลับแล้วแต่อ่านไม่ออก -> ถือว่าภาพไม่ชัด ต้องถ่ายใหม่
+     'unavailable' = เรียกบริการไม่ได้ (ออฟไลน์ / ยังไม่ deploy) -> ให้กรอกเอง
+   ต้องแยก 2 กรณีหลังออกจากกัน ไม่งั้นวันที่บริการล่มพนักงานจะเริ่มงานไม่ได้เลย */
+async function readImage(file, kind) {
+  const b64 = await new Promise(r => { const fr = new FileReader();
+    fr.onload = () => r(String(fr.result).split(',')[1]); fr.readAsDataURL(file); });
+  if (!navigator.onLine) return { status: 'unavailable', data: null };
+  try {
+    const { data, error } = await sb.functions.invoke('read-image',
+      { body: { kind, media_type: file.type || 'image/jpeg', image_base64: b64 } });
+    if (error || !data) return { status: 'unavailable', data: null };
+    if (data.ok !== true) return { status: 'unreadable', data: null };
+    const d = data.data || {};
+    const got = kind === 'odometer' ? d.odometer_km : (d.liters ?? d.amount_thb);
+    return { status: (got == null ? 'unreadable' : 'read'), data: d };
+  } catch { return { status: 'unavailable', data: null }; }
+}
+
+function viewTripStart(pos) {
+  const v = pickedVehicle(), c = pos.coords, stamped = new Date();
+  let photo = null, ocr = null, photoOk = false;
+  const b = el(`<main>
+    <div class="card"><h3>จุดเริ่มต้นการทำงาน</h3>
+      <div style="margin-top:7px"><div class="lb">วันที่-เวลา</div><div class="vl mono">${thDate(stamped)} ${thSec(stamped)}</div></div>
+      <div style="margin-top:5px"><div class="lb">พิกัด (lat, long)</div>
+        <div class="vl mono" style="font-size:13px">${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}</div></div>
+      <div style="margin-top:5px"><div class="lb">ความแม่นยำ</div><div class="vl mono">± ${Math.round(c.accuracy)} เมตร</div></div>
+      ${c.accuracy > 50 ? '<div class="note w" style="margin-top:9px"><span>🛰</span><span>สัญญาณยังไม่ค่อยแม่น ถ้าอยู่ในอาคารแนะนำออกมาที่โล่งแล้วกดจับพิกัดใหม่</span></div>' : ''}</div>
+    <div class="card"><h3>รถที่ใช้</h3>
+      <div class="vl mono" style="font-size:17px">${esc(v.plate)}</div>
+      <div class="lb">${esc(v.brand_name || '')} ${esc(v.model_name || '')} · ${esc(v.fuel_name || '')}</div></div>
+    <div class="card"><h3>เลขไมล์ต้นทาง</h3>
+      <div class="sub">ถ่ายรูปหน้าปัดให้เห็นเลข ODO ชัด ๆ AI จะอ่านตัวเลขมาเติมให้</div>
+      ${photoField('op', 'ยังไม่ได้ถ่ายรูปเลขไมล์')}
+      <label class="f big" style="margin-top:11px"><span>เลขไมล์ต้นทาง (กม.)</span>
+        <input id="odo" inputmode="numeric" maxlength="7" placeholder="128470"></label>
+      <div class="hint" id="ohint">AI จะเติมให้จากรูป — แก้ได้ถ้าอ่านผิด</div></div>
+    <button class="btn lg" id="go">✓ ยืนยันเริ่มงาน และเริ่มบันทึกเส้นทาง</button>
+    <button class="link" id="re">จับพิกัดใหม่</button>
+  </main>`);
+  shell('เริ่มปฏิบัติงาน', [...b.childNodes], { back: () => go('home'), tabs: false, actions: false });
+
+  $('#re').onclick = startFlow;
+  $('#op').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    photo = f; photoOk = false; ocr = null;
+    $('#opph').outerHTML = `<img class="thumb" id="opph" alt="เลขไมล์ต้นทาง" src="${URL.createObjectURL(f)}">`;
+    $('#ohint').textContent = 'กำลังให้ AI อ่านเลขไมล์…';
+    $('#go').disabled = true;
+    const r = await readImage(f, 'odometer');
+    ocr = r.data;
+    if (r.status === 'read') {
+      photoOk = true;
+      $('#odo').value = r.data.odometer_km;
+      $('#odo').readOnly = false;
+      $('#ohint').innerHTML = `AI อ่านได้ <b>${r.data.odometer_km}</b> · ความมั่นใจ ${
+        r.data.confidence || '-'} — แก้ได้ถ้าอ่านผิด`;
+    } else if (r.status === 'unreadable') {
+      // ภาพไม่ชัดพอให้ AI อ่านได้ -> ไม่ให้บันทึก ต้องถ่ายใหม่
+      $('#odo').value = '';
+      showUnclear('op', 'ohint');
+    } else {
+      photoOk = true;                 // บริการอ่านรูปใช้ไม่ได้ตอนนี้ ให้กรอกเอง
+      $('#ohint').innerHTML = '<b style="color:var(--warn)">ยังตรวจรูปอัตโนมัติไม่ได้</b>' +
+        ' (ไม่มีสัญญาณ หรือระบบอ่านรูปไม่พร้อม) กรุณากรอกเลขไมล์เอง' +
+        ' — ระบบจะตรวจรูปให้อีกครั้งเมื่อส่งขึ้นระบบ';
+    }
+    $('#go').disabled = false;
+  };
+
+  $('#go').onclick = async (e) => {
+    const odo = parseInt($('#odo').value.replace(/\D/g, ''), 10);
+    if (!photo) return toast('ต้องถ่ายรูปเลขไมล์ต้นทางก่อน', 1);
+    if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
+    if (!odo) return toast('กรอกเลขไมล์ต้นทาง', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังเริ่ม…';
+
+    const id = uuid();
+    S.trip = {
+      id, user_id: S.profile.id, vehicle_id: v.id, is_backup_vehicle: !!v.is_backup,
+      status: 'active', startAt: new Date().toISOString(),
+      start_lat: c.latitude, start_lng: c.longitude, start_accuracy_m: c.accuracy,
+      odo_start: odo, odo_start_ai: ocr?.odometer_km ?? null,
+      distM: 0, points: [], stops: [], fuels: [], media: [], _counted: null, _synced: false,
+    };
+    S.trip.points.push({ at: S.trip.startAt, lat: c.latitude, lng: c.longitude, acc: c.accuracy });
+    S.dwellAnchor = { lat: c.latitude, lng: c.longitude }; S.dwellSince = Date.now();
+    S.dwellStopId = null; S.curfewWarned = 0;
+
+    await queuePhoto(id, 'odo_start', photo, c, ocr);
+    saveTrip(); startWatch(); sync();
+    go('active');
+  };
+}
+
+async function queuePhoto(sessionId, kind, file, coords, ai) {
+  const id = uuid();
+  await IDB.put(id, file);
+  S.trip.media.push({ id, session_id: sessionId, kind,
+    taken_at: new Date().toISOString(), lat: coords?.latitude, lng: coords?.longitude,
+    from_camera: true, ai_result: ai || null, by_user: S.profile.id, _uploaded: false });
+  saveTrip();
+}
+
+function paintActive() {
+  const t = S.trip; if (!t) return;
+  const d = $('#a-dist'), tm = $('#a-time'), pt = $('#a-pts');
+  if (d) d.textContent = nf(t.distM / 1000);
+  if (tm) tm.textContent = dur(Date.now() - new Date(t.startAt));
+  if (pt) pt.textContent = t.points.length;
+}
+
+function viewActive() {
+  const t = S.trip;
+  if (!t) return go('home');
+  const jt = c => (S.master.job_types.find(x => x.code === c)?.name_th) || c || 'ยังไม่ระบุประเภทงาน';
+  const liters = (t.fuels || []).reduce((a, f) => a + (+f.liters || 0), 0);
+
+  const stopList = (t.stops || []).map(s => {
+    const open = !s.job_type_code;
+    return `<div class="item">
+      <div class="n ${open ? 'q' : ''}">${open ? '?' : s.seq}</div>
+      <div class="tx">
+        <div class="h" style="${open ? 'color:var(--warn)' : ''}">${open
+          ? `แวะ ${s.dwell_minutes || 0} นาที — รอระบุ` : esc(jt(s.job_type_code))}</div>
+        <div class="s">${s.store_code ? esc(s.store_code) + ' : ' + esc(s.store_name || '') + ' · ' : ''}
+          เข้า ${thTime(new Date(s.arrive_at))}${s.depart_at ? ' → ออก ' + thTime(new Date(s.depart_at)) : ' (ยังอยู่ที่นี่)'}
+          ${s.source === 'auto_dwell' ? ' · ระบบบันทึกพิกัดให้อัตโนมัติ' : ''}
+          ${s.job_note ? '<br>' + esc(s.job_note) : ''}</div></div>
+      ${open ? `<button class="link" data-cls="${s.id}" style="padding:0 4px">เลือกเลย</button>`
+             : (!s.depart_at ? `<button class="link" data-out="${s.id}" style="padding:0 4px">ออกจากจุดนี้</button>` : '')}
+    </div>`;
+  }).join('') || '<div class="lb">ยังไม่มีจุดปฏิบัติงาน — ถึงที่หมายแล้วกด "เพิ่มจุด"</div>';
+
+  const fuelList = (t.fuels || []).map(f => `<div class="item">
+      <div class="n" style="background:var(--g)">⛽</div>
+      <div class="tx"><div class="h">${nf(f.liters, 2)} ลิตร${f.amount_thb ? ' · ' + nf(f.amount_thb, 2) + ' บาท' : ''}</div>
+      <div class="s">${esc(f.station || 'ไม่ระบุปั๊ม')} · ${thTime(new Date(f.filled_at))}</div></div></div>`).join('');
+
+  const nodes = [
+    el(`<div class="note ${S.watchId != null ? 'g' : 'w'}"><span>${S.watchId != null ? '◉' : '⏸'}</span><span>${
+      S.watchId != null ? '<b>กำลังบันทึกเส้นทางแบบต่อเนื่อง</b><br>เปิดแอปนี้ค้างไว้ระหว่างเดินทาง ถ้าปิดแท็บหรือล็อกหน้าจอนาน เบราว์เซอร์จะหยุดส่งพิกัด'
+                            : 'การบันทึกเส้นทางหยุดอยู่ — แตะปุ่มด้านล่างเพื่อเริ่มใหม่'}</span></div>`),
+    el(`<div class="row">
+        <div class="stat"><div class="lb">เวลาที่ใช้</div><div class="v" id="a-time">${dur(Date.now() - new Date(t.startAt))}</div></div>
+        <div class="stat"><div class="lb">ระยะทาง GPS</div><div class="v"><span id="a-dist">${nf(t.distM / 1000)}</span><small>กม.</small></div></div></div>`),
+    el(`<div class="row">
+        <div class="stat"><div class="lb">จุดพิกัด</div><div class="v" id="a-pts">${t.points.length}</div></div>
+        <div class="stat"><div class="lb">เติมน้ำมัน</div><div class="v">${nf(liters, 2)}<small>ลิตร</small></div></div></div>`),
+    el(`<div class="card"><h3>จุดปฏิบัติงานในทริปนี้</h3>
+        <div class="sub">แต่ละจุดระบุประเภทงานแยกกัน · แวะที่ไหนเกิน ${CFG.dwellMinutes} นาที ระบบบันทึกพิกัดให้เอง แล้วให้คุณเลือกว่าแวะทำอะไร</div>
+        <div class="list">${stopList}</div></div>`),
+    el(`<div class="row"><button class="btn gh" id="addstop">📍 เพิ่มจุด</button>
+        <button class="btn gh" id="addfuel">⛽ เติมน้ำมัน</button></div>`),
+  ];
+  if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
+  if (S.watchId == null) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
+  nodes.push(el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
+
+  shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
+  $('#addstop').onclick = () => viewStopForm();
+  $('#addfuel').onclick = () => viewFuelForm();
+  $('#end').onclick = () => viewTripEnd();
+  if ($('#resume')) $('#resume').onclick = () => { startWatch(); go('active'); };
+  document.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => {
+    const s = t.stops.find(x => x.id === b.dataset.cls); askDwell(s.id, s.dwell_minutes || 0); });
+  document.querySelectorAll('[data-out]').forEach(b => b.onclick = async () => {
+    const s = t.stops.find(x => x.id === b.dataset.out);
+    try { const p = await getPos(12000);
+      s.depart_at = new Date().toISOString(); s.depart_lat = p.coords.latitude; s.depart_lng = p.coords.longitude;
+    } catch { s.depart_at = new Date().toISOString(); }
+    s._dirty = 1; saveTrip(); sync(); go('active');
+  });
+  if (S.pendingDwell) { const d = S.pendingDwell; S.pendingDwell = null; askDwell(d.id, d.mins); }
+}
+
+/* ---------------- แผ่นเลือกสาขา ---------------- */
+async function pickStore(onPick) {
+  let nearby = [];
+  if (S.lastPos) {
+    try {
+      const { data } = await sb.rpc('nearest_stores',
+        { p_lat: S.lastPos.coords.latitude, p_lng: S.lastPos.coords.longitude, p_limit: 8 });
+      nearby = data || [];
+    } catch {}
+  }
+  const all = S.master.stores || [];
+  const sheet = el(`<div class="sheet">
+    <h3>ค้นหาสาขา</h3>
+    <label class="f"><span>พิมพ์รหัส (125) หรือชื่อสาขา</span>
+      <input id="sq" placeholder="กระทุ่มล้ม หรือ CJX00125 หรือ TH0001"></label>
+    <div class="lb" id="scount"></div>
+    <div class="list" id="slist" style="max-height:52vh;overflow:auto"></div>
+    <button class="link" id="sx">ปิด</button></div>`);
+  overlay(sheet);
+  const norm = s => String(s || '').toLowerCase();
+  const digits = s => String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+  const draw = (q) => {
+    const t = q.trim();
+    let rows, near = false;
+    if (!t && nearby.length) { rows = nearby; near = true; }
+    else rows = all.filter(s => {
+      const d = digits(t);
+      return norm(s.code).includes(norm(t)) || norm(s.name).includes(norm(t))
+        || norm(s.legacy_code).includes(norm(t)) || (d && digits(s.code).startsWith(d));
+    }).slice(0, 60);
+    $('#scount').innerHTML = near
+      ? `<span style="color:#00713F">◎ สาขาใกล้คุณ ${rows.length} แห่ง — พิมพ์เพื่อค้นจากทั้งหมด ${all.length}</span>`
+      : `พบ ${rows.length} สาขา จากทั้งหมด ${all.length}`;
+    $('#slist').innerHTML = rows.map(s => `<div class="item" data-code="${esc(s.code)}" style="cursor:pointer">
+      <div class="tx"><div class="h mono" style="font-size:13.5px">${esc(s.code)} : ${esc(s.name)}</div>
+        <div class="s">${s.chain === 'TD' ? 'สาขา TD' : 'สาขา CJx'}${
+          s.legacy_code ? ' · รหัสเดิม ' + esc(s.legacy_code) : ''}</div></div>
+      ${s.distance_km != null ? `<div class="mono" style="font-size:12px;font-weight:700;color:#00713F">${nf(s.distance_km, 1)} กม.</div>` : '<div>›</div>'}
+    </div>`).join('') || '<div class="lb">ไม่พบสาขาที่ตรงกับคำค้น</div>';
+    $('#slist').querySelectorAll('[data-code]').forEach(n => n.onclick = () => {
+      const s = (near ? nearby : all).find(x => x.code === n.dataset.code)
+             || all.find(x => x.code === n.dataset.code);
+      closeOverlay(); onPick(s);
+    });
+  };
+  draw('');
+  $('#sq').oninput = e => draw(e.target.value);
+  $('#sx').onclick = closeOverlay;
+  setTimeout(() => $('#sq')?.focus(), 120);
+}
+
+/* ---------------- เพิ่มจุดปฏิบัติงาน ---------------- */
+function viewStopForm() {
+  let store = null, pos = null;
+  const jts = S.master.job_types;
+  const b = el(`<main>
+    <div class="card" id="poscard"><h3>ตำแหน่งที่อยู่ตอนนี้</h3>
+      <div class="lb" id="posv">กำลังจับสัญญาณ GPS…</div></div>
+    <label class="f"><span>ประเภทงานที่ไปทำ</span><select id="jt"><option value="">— เลือก —</option>
+      ${jts.map(j => `<option value="${esc(j.code)}">${esc(j.name_th)}${j.billable ? '' : ' (ไม่นับระยะงาน)'}</option>`).join('')}
+    </select></label>
+    <div class="hint">ถ้าไม่มีประเภทที่ตรง เลือก "อื่นๆ" แล้วพิมพ์เหตุผลได้</div>
+    <div id="noteWrap" class="hide"><label class="f"><span>เหตุผล (บังคับ)</span>
+      <textarea id="jn" placeholder="พิมพ์ได้เลยว่ามาทำอะไร"></textarea></label>
+      <div class="hint">Admin จะรวบรวมเหตุผลเหล่านี้เพื่อดูว่าควรเพิ่มประเภทงานใหม่อะไร</div></div>
+    <div id="stWrap"><div class="card" id="stcard" style="cursor:pointer">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="font-size:19px">🏪</span>
+        <div style="flex:1"><div class="lb" id="stlb">สาขา (ถ้าไปที่สาขา)</div>
+          <div class="vl mono" id="stv" style="font-size:13.5px;color:var(--faint)">แตะเพื่อเลือก / ค้นหาสาขา</div></div>
+        <button class="link" id="stclr" style="padding:0 4px;display:none">ล้าง</button>
+        <span id="stmag">🔍</span></div>
+      <div class="hint" style="padding:4px 0 0">พิมพ์ชื่อสาขา หรือรหัส (CJX00125 / TH000530 / 125) เพื่อค้นหา
+        — ไม่พิมพ์อะไรจะแนะนำสาขาที่ใกล้คุณที่สุดให้</div></div></div>
+    <label class="f"><span>ชื่อสถานที่</span><input id="pl2" placeholder="เลือกสาขาแล้วระบบเติมให้ — หรือพิมพ์เองได้"></label>
+    <label class="f"><span>หมายเหตุ (ไม่บังคับ)</span><textarea id="nt"></textarea></label>
+    <button class="btn" id="ok">บันทึกจุดปฏิบัติงาน</button>
+  </main>`);
+  shell('เพิ่มจุดปฏิบัติงาน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
+
+  getPos(15000).then(p => { pos = p;
+    $('#posv').innerHTML = `<span class="mono">${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}</span>
+      (± ${Math.round(p.coords.accuracy)} ม.)<br>${thDate(new Date())} ${thSec(new Date())}`;
+  }).catch(() => { pos = S.lastPos; $('#posv').textContent = pos ? 'ใช้พิกัดล่าสุดที่บันทึกไว้' : 'จับพิกัดไม่ได้'; });
+
+  // ช่องสาขาขึ้นเสมอทุกประเภทงาน — เปลี่ยนแค่ป้ายว่าบังคับหรือไม่
+  // (เดิมซ่อนไว้ถ้างานประเภทนั้นไม่บังคับ ทำให้เลือกสาขาไม่ได้เลย)
+  const onJt = () => {
+    const j = jts.find(x => x.code === $('#jt').value);
+    $('#noteWrap').classList.toggle('hide', !j?.requires_note);
+    $('#stlb').textContent = j?.needs_store
+      ? 'สาขา (งานประเภทนี้ต้องระบุ)' : 'สาขา (ถ้าไปที่สาขา)';
+    $('#stcard').style.border = (j?.needs_store && !store)
+      ? '2px solid var(--y-dk)' : '';
+  };
+  $('#jt').onchange = onJt;
+
+  const setStore = (x) => {
+    store = x;
+    $('#stv').textContent = x ? x.code + ' : ' + x.name : 'แตะเพื่อเลือก / ค้นหาสาขา';
+    $('#stv').style.color = x ? '' : 'var(--faint)';
+    $('#stclr').style.display = x ? '' : 'none';
+    $('#stmag').style.display = x ? 'none' : '';
+    onJt();
+  };
+  $('#stcard').onclick = (e) => {
+    if (e.target.id === 'stclr') return;          // ปุ่มล้างมี handler ของตัวเอง
+    pickStore(x => {
+      setStore(x);
+      if (!$('#pl2').value.trim()) $('#pl2').value = x.name;
+    });
+  };
+  $('#stclr').onclick = (e) => {
+    e.stopPropagation();
+    setStore(null);
+    toast('ล้างสาขาที่เลือกแล้ว');
+  };
+
+  $('#ok').onclick = async (e) => {
+    const j = jts.find(x => x.code === $('#jt').value);
+    if (!j) return toast('เลือกประเภทงาน', 1);
+    if (j.requires_note && $('#jn').value.trim().length < 3) return toast('ประเภทงาน "อื่นๆ" ต้องพิมพ์เหตุผล', 1);
+    if (j.needs_store && !store) return toast('งานประเภทนี้ต้องเลือกสาขา', 1);
+    if (!pos) return toast('ยังจับพิกัดไม่ได้ รอสักครู่แล้วลองใหม่', 1);
+    e.target.disabled = true;
+    const t = S.trip;
+    t.stops.push({ id: uuid(), session_id: t.id, seq: t.stops.length + 1,
+      job_type_code: j.code, job_note: $('#jn').value.trim() || null,
+      store_code: store?.code || null, store_name: store?.name || null,
+      place_label: $('#pl2').value.trim() || store?.name || null,
+      arrive_at: new Date().toISOString(),
+      arrive_lat: pos.coords.latitude, arrive_lng: pos.coords.longitude,
+      note: $('#nt').value.trim() || null, source: 'manual', _dirty: 1 });
+    saveTrip(); sync(); toast('บันทึกจุดปฏิบัติงานแล้ว'); go('active');
+  };
+}
+
+/* ---------------- แผ่นถามจุดที่แวะ ---------------- */
+function askDwell(stopId, mins) {
+  const t = S.trip; const s = t.stops.find(x => x.id === stopId); if (!s) return;
+  let store = null;
+  const jts = S.master.job_types;
+  const sheet = el(`<div class="sheet" data-dismiss="no">
+    <div style="text-align:center;font-size:26px">📍</div>
+    <h3 style="text-align:center">บันทึกจุดที่แวะ (${mins} นาที)</h3>
+    <div style="font-size:13px;color:#3C4655;text-align:center;line-height:1.6">
+      ระบบบันทึกพิกัดจุดนี้ไว้ให้แล้ว ช่วยเลือกว่าแวะทำอะไร
+      เพื่อให้ระยะทางและค่าน้ำมันของวันนี้คิดให้คุณได้ถูกต้องครบถ้วน<br>
+      <b>ถ้าเป็นการพักหรือธุระส่วนตัว เลือกได้ตามจริง ไม่มีผลเสียกับคุณ</b></div>
+    <label class="f"><span>ประเภทงาน</span><select id="dj"><option value="">— เลือก —</option>
+      ${jts.map(j => `<option value="${esc(j.code)}">${esc(j.name_th)}</option>`).join('')}</select></label>
+    <div id="dnw" class="hide"><label class="f"><span>เหตุผล (บังคับ)</span>
+      <input id="dn" placeholder="พิมพ์ได้เลยว่าแวะทำอะไร"></label></div>
+    <div id="dsw"><button class="btn gh" id="dst">🏪 เลือก / ค้นหาสาขา (ถ้าไปที่สาขา)</button></div>
+    <button class="btn" id="dok">บันทึกเป็นจุดปฏิบัติงาน</button>
+    <button class="btn gh" id="dbk">☕ พัก / ธุระส่วนตัว</button>
+    <button class="link" id="dl">ไว้ทีหลัง</button></div>`);
+  overlay(sheet);
+  $('#dj').onchange = () => {
+    const j = jts.find(x => x.code === $('#dj').value);
+    $('#dnw').classList.toggle('hide', !j?.requires_note);
+    // ช่องสาขาขึ้นเสมอ เปลี่ยนแค่ข้อความว่าบังคับหรือไม่
+    if (!store) $('#dst').textContent = j?.needs_store
+      ? '🏪 เลือกสาขา (งานประเภทนี้ต้องระบุ)'
+      : '🏪 เลือก / ค้นหาสาขา (ถ้าไปที่สาขา)';
+  };
+  $('#dst').onclick = () => pickStore(x => { store = x; $('#dst').textContent = '🏪 ' + x.code + ' : ' + x.name; });
+  const finish = (patch) => { Object.assign(s, patch, { needs_reason: !patch.job_type_code, _dirty: 1 });
+    saveTrip(); sync(); closeOverlay(); go('active'); };
+  $('#dok').onclick = () => {
+    const j = jts.find(x => x.code === $('#dj').value);
+    if (!j) return toast('เลือกประเภทงาน', 1);
+    if (j.requires_note && $('#dn').value.trim().length < 3) return toast('กรอกเหตุผล', 1);
+    if (j.needs_store && !store) return toast('งานประเภทนี้ต้องเลือกสาขา', 1);
+    finish({ job_type_code: j.code, job_note: $('#dn').value.trim() || null,
+      store_code: store?.code || null, store_name: store?.name || null,
+      place_label: store?.name || null });
+  };
+  $('#dbk').onclick = () => {
+    const other = jts.find(j => j.code === 'OTHER');
+    finish({ job_type_code: other?.code || null, job_note: 'พัก / ธุระส่วนตัว' });
+  };
+  $('#dl').onclick = closeOverlay;
+}
+
+/* ---------------- เติมน้ำมัน ---------------- */
+function viewFuelForm() {
+  let photo = null, ocr = null;
+  const q = S.quota;
+  const b = el(`<main>
+    <div class="card"><h3>รูปสลิปน้ำมัน</h3>
+      <div class="sub">ถ่ายให้เห็นจำนวนลิตรและยอดเงินชัด ๆ AI จะอ่านมาเติมให้</div>
+      ${photoField('fp', 'ยังไม่ได้ถ่ายรูปสลิป')}
+      <div class="hint" id="fhint"></div></div>
+    <label class="f big"><span>จำนวนลิตร</span><input id="lt" inputmode="decimal" placeholder="32.15"></label>
+    <div class="row">
+      <label class="f"><span>ยอดเงิน (บาท)</span><input id="am" inputmode="decimal"></label>
+      <label class="f"><span>ราคา/ลิตร</span><input id="pr" inputmode="decimal"></label></div>
+    <label class="f"><span>ปั๊ม / สาขา</span><input id="stn"></label>
+    <label class="f ${CFG.showFuelOdometer ? '' : 'hide'}">
+      <span>เลขไมล์ตอนเติม (ถ้าจำได้)</span>
+      <input id="fodo" inputmode="numeric" maxlength="7"></label>
+    <div id="qbox"></div>
+    <button class="btn" id="ok">บันทึกการเติมน้ำมัน</button>
+  </main>`);
+  shell('บันทึกการเติมน้ำมัน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
+
+  const drawQuota = () => {
+    const box = $('#qbox'); box.innerHTML = '';
+    if (!q || q.state === 'no_quota') { box.append(quotaCard(true)); return; }
+    const unit = q.unit === 'thb' ? 'บาท' : 'ลิตร', dg = q.unit === 'thb' ? 0 : 1;
+    const add = q.unit === 'thb' ? (parseFloat($('#am').value) || 0) : (parseFloat($('#lt').value) || 0);
+    const after = (q.used || 0) + add, lim = q.quota || 0;
+    const pct = lim ? after / lim : 0;
+    const col = pct >= 1 ? 'var(--r)' : pct >= .85 ? 'var(--warn)' : '#00713F';
+    box.append(el(`<div class="card" style="border-color:${col}">
+      <div class="note i" style="margin-bottom:9px"><span>🗺</span><span>
+        <b>กรุณาวางแผนการเดินทางอย่างรอบคอบทุกครั้งก่อนเดินทาง</b></span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span>${pct >= 1 ? '⛔' : pct >= .85 ? '⚠️' : '✅'}</span>
+        <div class="vl" style="color:${col};flex:1">${add > 0
+          ? `เติมครั้งนี้แล้วจะใช้โควต้าไป ${Math.round(pct * 100)}%`
+          : `โควต้าเดือนนี้ใช้ไป ${Math.round((q.used_pct || 0) * 100)}%`}</div></div>
+      <div class="lb" style="color:${col};margin-top:4px">${nf(after, dg)} / ${nf(lim, dg)} ${unit} ·
+        ${pct >= 1 ? 'เกินโควต้า ' + nf(after - lim, dg) : 'เหลือ ' + nf(Math.max(lim - after, 0), dg)} ${unit}</div>
+      </div>`));
+  };
+  drawQuota();
+
+  const autofill = () => {
+    const l = parseFloat($('#lt').value), a = parseFloat($('#am').value), p = parseFloat($('#pr').value);
+    if (l && p && !a) $('#am').value = (l * p).toFixed(2);
+    else if (l && a && !p && l > 0) $('#pr').value = (a / l).toFixed(2);
+    else if (a && p && !l && p > 0) $('#lt').value = (a / p).toFixed(2);
+    drawQuota();
+  };
+  ['lt', 'am', 'pr'].forEach(id => $('#' + id).oninput = autofill);
+
+  $('#fp').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    photo = f;
+    $('#fpph').outerHTML = `<img class="thumb" id="fpph" alt="สลิปน้ำมัน" src="${URL.createObjectURL(f)}">`;
+    $('#fhint').textContent = 'กำลังให้ AI อ่านสลิป…';
+    const r = await readImage(f, 'fuel_slip');
+    ocr = r.data;
+    if (r.status === 'read') {
+      const d = r.data;
+      if (d.liters) $('#lt').value = (+d.liters).toFixed(2);
+      if (d.amount_thb) $('#am').value = (+d.amount_thb).toFixed(2);
+      if (d.price_per_liter) $('#pr').value = (+d.price_per_liter).toFixed(2);
+      if (d.station) $('#stn').value = d.station;
+      $('#fhint').textContent = d.warning || 'AI อ่านสลิปแล้ว — ตรวจตัวเลขให้ตรงก่อนบันทึก';
+      drawQuota();
+    } else if (r.status === 'unreadable') {
+      // สลิปยังให้กรอกเองได้ (ต่างจากรูปเลขไมล์ที่บังคับให้ถ่ายใหม่)
+      // เพราะบางปั๊มพิมพ์สลิปจาง อ่านไม่ออกจริง ๆ แต่ยอดเงินยังต้องเบิกได้
+      $('#fhint').innerHTML = '<b style="color:var(--stop)">ภาพสลิปไม่ชัด ระบบอ่านไม่ออก</b>' +
+        ' — ถ้าถ่ายใหม่ให้ชัดกว่านี้ได้จะดีที่สุด หรือกรอกจำนวนลิตรและยอดเงินเอง';
+    } else {
+      $('#fhint').innerHTML = '<b style="color:var(--warn)">ยังตรวจรูปอัตโนมัติไม่ได้</b>' +
+        ' (ไม่มีสัญญาณ หรือระบบอ่านรูปไม่พร้อม) กรุณากรอกตัวเลขเอง';
+    }
+  };
+
+  $('#ok').onclick = async (e) => {
+    const l = parseFloat($('#lt').value);
+    if (!photo) return toast('ต้องถ่ายรูปสลิปน้ำมันก่อน', 1);
+    if (!l || l <= 0 || l > 500) return toast('จำนวนลิตรไม่ถูกต้อง', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    const t = S.trip, fid = uuid();
+    t.fuels.push({ id: fid, session_id: t.id, filled_at: new Date().toISOString(),
+      liters: l, amount_thb: parseFloat($('#am').value) || null,
+      price_per_liter: parseFloat($('#pr').value) || null,
+      station: $('#stn').value.trim() || null,
+      odo_at_fill: parseInt($('#fodo').value.replace(/\D/g, ''), 10) || null,
+      paid_by: pickedVehicle()?.ownership === 'company' ? 'fleet_card' : 'own',
+      ai_raw: ocr || null, _dirty: 1 });
+    await queuePhoto(t.id, 'fuel_slip', photo, S.lastPos?.coords, ocr);
+    t.media[t.media.length - 1].fuel_id = fid;
+    saveTrip(); await sync(); await refreshQuota();
+    toast('บันทึกการเติมน้ำมันแล้ว'); go('active');
+  };
+}
+
+/* ---------------- สิ้นสุดการทำงาน ---------------- */
+function viewTripEnd() {
+  const t = S.trip;
+  let photo = null, ocr = null, pos = null, photoOk = false;
+  const b = el(`<main>
+    <div class="row">
+      <div class="stat"><div class="lb">เวลาทั้งหมด</div><div class="v">${dur(Date.now() - new Date(t.startAt))}</div></div>
+      <div class="stat"><div class="lb">ระยะ GPS</div><div class="v">${nf(t.distM / 1000)}<small>กม.</small></div></div></div>
+    <div class="card" id="pc"><h3>จุดสิ้นสุดการทำงาน</h3><div class="lb" id="pv">กำลังจับสัญญาณ GPS…</div></div>
+    <div class="card"><h3>เลขไมล์ปลายทาง</h3>
+      <div class="sub">เลขไมล์ต้นทางที่บันทึกไว้: <b class="mono">${ni(t.odo_start)}</b> กม.</div>
+      ${photoField('ep', 'ยังไม่ได้ถ่ายรูปเลขไมล์ปลายทาง')}
+      <label class="f big" style="margin-top:11px"><span>เลขไมล์ปลายทาง (กม.)</span>
+        <input id="odo" inputmode="numeric" maxlength="7"></label>
+      <div class="hint" id="eh">AI จะเติมให้จากรูป — แก้ได้ถ้าอ่านผิด</div>
+      <div id="warn"></div></div>
+    <label class="f"><span>หมายเหตุปิดงาน (ไม่บังคับ)</span>
+      <textarea id="nt" placeholder="เช่น สัญญาณหลุดช่วงเข้าเขาชะงุ้ม"></textarea></label>
+    <button class="btn stop lg" id="ok">ยืนยันสิ้นสุดการทำงาน</button>
+  </main>`);
+  shell('สิ้นสุดการทำงาน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
+
+  getPos(15000).then(p => { pos = p;
+    $('#pv').innerHTML = `${thDate(new Date())} ${thSec(new Date())}<br>
+      <span class="mono">${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}</span> (± ${Math.round(p.coords.accuracy)} ม.)`;
+  }).catch(() => { pos = S.lastPos; $('#pv').textContent = pos ? 'ใช้พิกัดล่าสุดที่บันทึกไว้' : 'จับพิกัดไม่ได้'; });
+
+  const checkOdo = () => {
+    const e2 = parseInt($('#odo').value.replace(/\D/g, ''), 10);
+    const w = $('#warn'); w.innerHTML = '';
+    if (!e2 || !t.odo_start) return;
+    if (e2 < t.odo_start) { w.append(el(`<div class="note e" style="margin-top:9px"><span>⛔</span><span>
+      เลขไมล์ปลายทาง (${ni(e2)}) น้อยกว่าต้นทาง (${ni(t.odo_start)}) — ตรวจสอบรูปอีกครั้ง</span></div>`)); return; }
+    const odoKm = e2 - t.odo_start, gps = t.distM / 1000;
+    if (gps < 1) return;
+    const gap = Math.abs(odoKm - gps) / gps;
+    if (gap > .15) w.append(el(`<div class="note e" style="margin-top:9px"><span>🚩</span><span>
+      ระยะจากเลขไมล์ ${ni(odoKm)} กม. ต่างจากระยะ GPS ${nf(gps)} กม. (${Math.round(gap * 100)}%) —
+      ระบบจะบันทึกทั้งสองค่า ติดธงไว้ และ<b>แจ้งหัวหน้างานอัตโนมัติ</b></span></div>`));
+  };
+  $('#odo').oninput = checkOdo;
+
+  $('#ep').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    photo = f; photoOk = false; ocr = null;
+    $('#epph').outerHTML = `<img class="thumb" id="epph" alt="เลขไมล์ปลายทาง" src="${URL.createObjectURL(f)}">`;
+    $('#eh').textContent = 'กำลังให้ AI อ่านเลขไมล์…';
+    $('#ok').disabled = true;
+    const r = await readImage(f, 'odometer');
+    ocr = r.data;
+    if (r.status === 'read') {
+      photoOk = true;
+      $('#odo').value = r.data.odometer_km;
+      $('#eh').innerHTML = `AI อ่านได้ <b>${r.data.odometer_km}</b> · ความมั่นใจ ${
+        r.data.confidence || '-'} — แก้ได้ถ้าอ่านผิด`;
+      checkOdo();
+    } else if (r.status === 'unreadable') {
+      $('#odo').value = ''; $('#warn').innerHTML = '';
+      showUnclear('ep', 'eh');
+    } else {
+      photoOk = true;
+      $('#eh').innerHTML = '<b style="color:var(--warn)">ยังตรวจรูปอัตโนมัติไม่ได้</b>' +
+        ' (ไม่มีสัญญาณ หรือระบบอ่านรูปไม่พร้อม) กรุณากรอกเลขไมล์เอง';
+    }
+    $('#ok').disabled = false;
+  };
+
+  $('#ok').onclick = async (e) => {
+    const odo = parseInt($('#odo').value.replace(/\D/g, ''), 10);
+    if (!photo) return toast('ต้องถ่ายรูปเลขไมล์ปลายทางก่อน', 1);
+    if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
+    if (!odo) return toast('กรอกเลขไมล์ปลายทาง', 1);
+    if (t.odo_start && odo < t.odo_start) return toast('เลขไมล์ปลายทางน้อยกว่าต้นทาง', 1);
+    const open = t.stops.filter(s => !s.job_type_code).length;
+    const msg = 'ปิดแล้วจะแก้ไขข้อมูลทริปนี้ไม่ได้อีก\n\nระยะทาง GPS: ' + nf(t.distM / 1000) + ' กม.'
+      + (t.odo_start ? '\nระยะจากเลขไมล์: ' + ni(odo - t.odo_start) + ' กม.' : '')
+      + (open ? '\n\nยังมีจุดที่แวะ ' + open + ' จุดที่ยังไม่ได้ระบุ' : '');
+    if (!await askConfirm('ยืนยันสิ้นสุดการทำงาน?', msg, 'ปิดงาน', true)) return;
+    e.target.disabled = true; e.target.textContent = 'กำลังปิดงาน…';
+
+    const c = pos?.coords || S.lastPos?.coords || {};
+    await queuePhoto(t.id, 'odo_end', photo, c, ocr);
+    t.status = 'ended';
+    t.end_at = new Date().toISOString();
+    t.end_lat = c.latitude ?? null; t.end_lng = c.longitude ?? null; t.end_accuracy_m = c.accuracy ?? null;
+    t.odo_end = odo; t.odo_end_ai = ocr?.odometer_km ?? null;
+    t.note = $('#nt').value.trim() || null;
+    stopWatch(); saveTrip();
+
+    const done = { ...t };
+    await sync();
+    LS.set('lastTrip', done); LS.del('trip'); S.trip = null;
+    S.dwellAnchor = null; S.dwellStopId = null;
+    await refreshQuota();
+    viewSummary(done, true);
+  };
+}
+
+/* ---------------- สรุปทริป ---------------- */
+function viewSummary(t, justDone) {
+  const gpsKm = (t.distM != null ? t.distM : (t.gps_distance_m || 0)) / 1000;
+  const odoKm = (t.odo_end && t.odo_start) ? t.odo_end - t.odo_start : null;
+  const liters = (t.fuels || []).reduce((a, f) => a + (+f.liters || 0), 0);
+  const baht = (t.fuels || []).reduce((a, f) => a + (+f.amount_thb || 0), 0);
+  const st = new Date(t.startAt || t.start_at), en = t.end_at ? new Date(t.end_at) : null;
+  const jt = c => (S.master.job_types.find(x => x.code === c)?.name_th) || c || 'ยังไม่ระบุ';
+
+  const nodes = [];
+  if (justDone) nodes.push(el(`<div class="note g"><span>✓</span><span>
+    บันทึกทริปเรียบร้อย — ข้อมูลเก็บในเครื่องแล้ว และจะส่งขึ้นระบบเองเมื่อมีสัญญาณ</span></div>`));
+  nodes.push(el(`<div class="card"><h3>${thDate(st)}</h3>
+    <div class="lb">${thTime(st)} → ${en ? thTime(en) : 'ยังไม่ปิด'} (${en ? dur(en - st) : '-'})</div></div>`));
+  nodes.push(el(`<div class="row">
+    <div class="stat"><div class="lb">ระยะทางรวม (GPS)</div><div class="v">${nf(gpsKm)}<small>กม.</small></div></div>
+    <div class="stat"><div class="lb">ระยะจากเลขไมล์</div><div class="v">${odoKm == null ? '—' : ni(odoKm)}<small>${odoKm == null ? '' : 'กม.'}</small></div></div></div>`));
+  nodes.push(el(`<div class="row">
+    <div class="stat"><div class="lb">จุดปฏิบัติงาน</div><div class="v">${(t.stops || []).length}<small>จุด</small></div></div>
+    <div class="stat"><div class="lb">น้ำมัน</div><div class="v">${nf(liters, 2)}<small>ลิตร</small></div></div></div>`));
+  if (baht) nodes.push(el(`<div class="stat"><div class="lb">ค่าน้ำมันในทริปนี้</div><div class="v">${nf(baht, 2)}<small>บาท</small></div></div>`));
+
+  const mapCard = el(`<div class="card"><h3>เส้นทางการเดินทาง</h3>
+    <div class="sub">${(t.points || []).length} จุดพิกัด</div>
+    <canvas class="route" id="rt"></canvas>
+    <div class="lb" style="margin-top:6px">🟢 เริ่มงาน · 🔴 สิ้นสุด · 🟡 จุดที่แวะ${
+      t._pruned ? '<br>ภาพนี้ลดจุดลงเพื่อวาดให้เร็ว — เส้นทางเต็มอยู่บนระบบ' : ''}</div></div>`);
+  nodes.push(mapCard);
+
+  nodes.push(el(`<div class="card"><h3>จุดปฏิบัติงาน</h3><div class="list">
+    ${(t.stops || []).map(s => `<div class="item"><div class="n ${s.job_type_code ? '' : 'q'}">${s.job_type_code ? s.seq : '?'}</div>
+      <div class="tx"><div class="h">${esc(jt(s.job_type_code))}</div>
+      <div class="s">${s.store_code ? esc(s.store_code) + ' : ' + esc(s.store_name || '') + '<br>' : ''}
+        เข้า ${thTime(new Date(s.arrive_at))}${s.depart_at ? ' → ออก ' + thTime(new Date(s.depart_at)) : ''}
+        ${s.job_note ? '<br>เหตุผล: ' + esc(s.job_note) : ''}</div></div></div>`).join('')
+    || '<div class="lb">ไม่มีจุดปฏิบัติงานในทริปนี้</div>'}</div></div>`));
+
+  nodes.push(el('<button class="btn" id="hm">กลับหน้าหลัก</button>'));
+  shell(justDone ? 'ปิดงานเรียบร้อย' : 'สรุปทริป', nodes, { back: justDone ? false : () => go('history'), tabs: false, actions: false });
+  $('#hm').onclick = () => go('home');
+  drawRoute($('#rt'), t);
+}
+
+function drawRoute(cv, t) {
+  if (!cv) return;
+  const pts = (t.points || []).filter(p => p.lat && p.lng);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr);
+  g.fillStyle = '#E9EFE8'; g.fillRect(0, 0, w, h);
+  if (pts.length < 2) {
+    g.fillStyle = '#8A94A1'; g.font = '13px sans-serif'; g.textAlign = 'center';
+    g.fillText('จุดพิกัดน้อยเกินไป ยังวาดเส้นทางไม่ได้', w / 2, h / 2); return;
+  }
+  const la = pts.map(p => p.lat), ln = pts.map(p => p.lng);
+  const minLa = Math.min(...la), maxLa = Math.max(...la), minLn = Math.min(...ln), maxLn = Math.max(...ln);
+  const pad = 18;
+  const sx = (maxLn - minLn) || 1e-6, sy = (maxLa - minLa) || 1e-6;
+  const sc = Math.min((w - pad * 2) / sx, (h - pad * 2) / sy);
+  const X = x => pad + (x - minLn) * sc + ((w - pad * 2) - sx * sc) / 2;
+  const Y = y => h - pad - (y - minLa) * sc - ((h - pad * 2) - sy * sc) / 2;
+
+  g.strokeStyle = '#D3DCD2'; g.lineWidth = 5;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, h * i / 4); g.lineTo(w, h * i / 4); g.stroke(); }
+  g.strokeStyle = '#E30613'; g.lineWidth = 3.4; g.lineJoin = 'round'; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(X(pts[0].lng), Y(pts[0].lat));
+  pts.slice(1).forEach(p => g.lineTo(X(p.lng), Y(p.lat))); g.stroke();
+
+  const dot = (x, y, col, r = 6) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = col; g.fill();
+    g.lineWidth = 2.4; g.strokeStyle = '#fff'; g.stroke(); };
+  (t.stops || []).forEach(s => { if (s.arrive_lat)
+    dot(X(s.arrive_lng), Y(s.arrive_lat), s.job_type_code ? '#fff' : '#C9A227', 5); });
+  dot(X(pts[0].lng), Y(pts[0].lat), '#00A651');
+  dot(X(pts[pts.length - 1].lng), Y(pts[pts.length - 1].lat), '#C00510');
+}
+
+/* ==================================================================== */
+/*  ประวัติ · แจ้งเตือน · คำขอ · อนุมัติ · Admin                          */
+/* ==================================================================== */
+async function viewHistory() {
+  S.tab = 'history'; loading('กำลังโหลดประวัติ…');
+  let rows = [];
+  try {
+    const { data } = await sb.from('work_sessions').select('*')
+      .eq('user_id', S.profile.id).order('start_at', { ascending: false }).limit(60);
+    rows = data || [];
+  } catch { toast('ดึงประวัติจากเซิร์ฟเวอร์ไม่ได้', 1); }
+  const last = LS.get('lastTrip');
+  if (last && !rows.some(r => r.id === last.id)) rows.unshift({ ...last, start_at: last.startAt });
+
+  const nodes = rows.length ? rows.map(r => {
+    const st = new Date(r.start_at), km = (r.gps_distance_m || r.distM || 0) / 1000;
+    const flagged = r.mock_detected || r.auto_closed;
+    return el(`<div class="card" data-id="${esc(r.id)}" style="cursor:pointer${flagged ? ';border-color:var(--warn)' : ''}">
+      <div style="display:flex;align-items:center"><h3 style="flex:1">${thDate(st)}</h3>
+        <span class="pill ${r.status === 'active' ? 'g' : r.status === 'auto_closed' ? 'w' : 'n'}">${
+          r.status === 'active' ? 'กำลังทำงาน' : r.status === 'auto_closed' ? 'ระบบปิดให้' : 'ปิดงานแล้ว'}</span></div>
+      <div class="lb" style="margin-top:5px">🕐 ${thTime(st)} → ${r.end_at ? thTime(new Date(r.end_at)) : '—'}
+        &nbsp;·&nbsp; 🛣 <b>${nf(km)} กม.</b></div></div>`);
+  }) : [el('<div class="note i"><span>📭</span><span>ยังไม่มีประวัติการเดินทาง</span></div>')];
+
+  shell('ประวัติการเดินทาง', nodes, { tabs: true });
+  document.querySelectorAll('[data-id]').forEach(n => n.onclick = async () => {
+    const r = rows.find(x => x.id === n.dataset.id);
+    if (r.points) return viewSummary(r);
+    loading('กำลังโหลดทริป…');
+    const [pts, sts, fus] = await Promise.all([
+      sb.from('session_points').select('at,lat,lng').eq('session_id', r.id).order('at'),
+      sb.from('stops').select('*').eq('session_id', r.id).order('seq'),
+      sb.from('fuel_records').select('*').eq('session_id', r.id),
+    ]);
+    viewSummary({ ...r, startAt: r.start_at, points: pts.data || [], stops: sts.data || [], fuels: fus.data || [] });
+  });
+}
+
+async function viewAlerts() {
+  S.tab = 'alerts'; loading('กำลังโหลดกล่องแจ้งเตือน…');
+  const { data } = await sb.from('alerts').select('*')
+    .eq('to_user', S.profile.id).order('created_at', { ascending: false }).limit(60);
+  const rows = data || [];
+  const ic = k => ({ not_closed_2200: '🌙', odo_anomaly: '🧭', off_route_stop: '📍',
+    quota_near: '⛽', quota_exceeded: '⛽', vehicle_expiring: '📅',
+    change_request: '📝', change_decided: '✅' }[k] || '🔔');
+  const nodes = rows.length ? rows.map(a => el(`<div class="card" data-a="${esc(a.id)}"
+      style="cursor:pointer;opacity:${a.read_at ? .62 : 1};${a.severity === 'critical' ? 'border-color:var(--r)' : a.severity === 'warn' ? 'border-color:var(--warn)' : ''}">
+      <div style="display:flex;gap:10px">
+        <span style="font-size:20px">${ic(a.kind)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex"><span class="pill ${a.severity === 'critical' ? 'e' : a.severity === 'warn' ? 'w' : 'b'}">${esc(a.kind)}</span>
+            <span class="sp"></span><span class="lb">${thDT(new Date(a.created_at))}</span></div>
+          <div class="vl" style="margin-top:5px">${esc(a.title)}</div>
+          ${a.body ? `<div class="lb" style="white-space:pre-line">${esc(a.body)}</div>` : ''}</div>
+        ${a.read_at ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:var(--r);flex:none;margin-top:5px"></span>'}
+      </div></div>`))
+    : [el('<div class="note i"><span>🔔</span><span>ยังไม่มีการแจ้งเตือน</span></div>')];
+  nodes.unshift(el('<button class="btn gh" id="rall">ทำเครื่องหมายว่าอ่านทั้งหมด</button>'));
+  shell('กล่องแจ้งเตือน', nodes, { tabs: true });
+  $('#rall').onclick = async () => {
+    await sb.from('alerts').update({ read_at: new Date().toISOString() })
+      .eq('to_user', S.profile.id).is('read_at', null);
+    await refreshCounts(); go('alerts');
+  };
+  document.querySelectorAll('[data-a]').forEach(n => n.onclick = async () => {
+    await sb.from('alerts').update({ read_at: new Date().toISOString() }).eq('id', n.dataset.a);
+    await refreshCounts(); go('alerts');
+  });
+}
+
+const REQ_TYPES = [
+  ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย / ได้บัตรใหม่'],
+  ['plate', 'เปลี่ยนทะเบียนรถ', 'เปลี่ยนป้ายทะเบียน หรือกรอกผิดตอนแรก'],
+  ['vehicle_replace', 'เปลี่ยนรถ / ใช้รถทดแทน', 'เปลี่ยนรถใหม่ หรือใช้รถทดแทนชั่วคราว'],
+  ['backup_extend', 'ต่ออายุการใช้รถสำรอง', 'ยังต้องใช้รถสำรองต่อจากกำหนดเดิม'],
+  ['profile', 'แก้ข้อมูลพนักงาน', 'ชื่อ-นามสกุล หรือ Cost center ไม่ถูกต้อง'],
+  ['quota', 'ขอเพิ่มโควต้าน้ำมัน', 'ปริมาณงานเพิ่มขึ้นจนโควต้าไม่พอ'],
+];
+
+async function viewRequests(opts = {}) {
+  S.tab = 'requests';
+  let type = opts.preset || 'fleet_card';
+  let vehicle = opts.vehicle || pickedVehicle();
+  let reasonCode = 'damaged';
+  const { data: mine } = await sb.from('change_requests').select('*')
+    .eq('user_id', S.profile.id).order('created_at', { ascending: false }).limit(30);
+
+  const render = () => {
+    const isFleet = type === 'fleet_card';
+    const needsVeh = ['fleet_card', 'plate', 'vehicle_replace', 'backup_extend'].includes(type);
+    const needsDates = type === 'backup_extend';
+    const oldVal = { fleet_card: vehicle?.fleet_card_no, plate: vehicle?.plate,
+      vehicle_replace: vehicle ? vehicle.plate + ' ' + (vehicle.brand_name || '') : null,
+      backup_extend: vehicle?.use_to,
+      profile: (S.profile.full_name || '') + ' · ' + (S.profile.cost_center_code || ''),
+      quota: S.quota?.quota ? nf(S.quota.quota, S.quota.unit === 'thb' ? 0 : 1) + ' ' + (S.quota.unit === 'thb' ? 'บาท' : 'ลิตร') + '/เดือน' : null }[type];
+
+    const nodes = [
+      el(`<div class="lb">เลือกเรื่องที่ต้องการเปลี่ยน</div>`),
+      el(`<div id="tt" style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+        ${REQ_TYPES.map(([k, l, h]) => `<div class="card" data-t="${k}" style="cursor:pointer;padding:11px${k === type ? ';border:2px solid var(--y-dk)' : ''}">
+          <div style="font-size:13px;font-weight:700">${l}</div><div class="lb" style="font-size:10.5px">${h}</div></div>`).join('')}</div>`),
+    ];
+    if (needsVeh) nodes.push(el(`<label class="f"><span>รถที่เกี่ยวข้อง</span><select id="vh">
+      ${S.vehicles.map(v => `<option value="${v.id}" ${v.id === vehicle?.id ? 'selected' : ''}>${esc(v.plate)} · ${v.is_backup ? 'สำรอง' : 'หลัก'}</option>`).join('')}
+      </select></label>`));
+    nodes.push(el(`<div class="card"><h3>รายละเอียดคำขอ</h3>
+      <div class="lb" style="margin-top:7px">ค่าเดิม</div><div class="vl mono">${esc(oldVal || '(ไม่มี)')}</div>
+      ${isFleet ? `<div class="lb" style="margin-top:11px">สาเหตุที่ต้องออกบัตรใบใหม่</div>
+        <div class="seg" id="rc" style="margin-top:5px">
+          <button data-r="damaged" class="on">บัตรชำรุด</button>
+          <button data-r="lost">บัตรหาย</button>
+          <button data-r="other">อื่นๆ</button></div>
+        <div class="note i" style="margin-top:10px"><span>🏦</span><span>
+          <b>ไม่ต้องกรอกเลขบัตรใบใหม่ตอนนี้</b> — หัวหน้าอนุมัติแล้ว ระบบจะส่งเรื่องให้แผนกบัญชี
+          ติดต่อธนาคารผู้ออกบัตร เมื่อบัตรมาถึงจะแจ้งให้คุณไปรับ แล้วอัปเดตเลขบัตรให้อัตโนมัติ</span></div>`
+        : needsDates ? `<div class="row" style="margin-top:11px">
+            <label class="f"><span>ใช้ต่อตั้งแต่</span><input id="d1" type="date" value="${esc(vehicle?.use_to || new Date().toISOString().slice(0,10))}"></label>
+            <label class="f"><span>ถึงวันที่</span><input id="d2" type="date" value="${new Date(Date.now()+14*864e5).toISOString().slice(0,10)}"></label></div>`
+        : `<label class="f" style="margin-top:11px"><span>ค่าใหม่</span><input id="nv"></label>`}
+      <label class="f" style="margin-top:11px"><span>เหตุผล (บังคับ)</span>
+        <textarea id="rs" placeholder="เช่น แถบแม่เหล็กชำรุด รูดที่ปั๊มไม่ได้"></textarea></label></div>`));
+    nodes.push(el(`<div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
+      S.profile.supervisor_employee_code
+        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ (รหัส ' + esc(S.profile.supervisor_employee_code) + ')'
+        : 'ยังไม่มีข้อมูลหัวหน้างานในระบบ — คำขอจะถูกบันทึกไว้แต่ยังไม่มีใครอนุมัติได้ แจ้ง Admin'}</span></div>`));
+    nodes.push(el(`<button class="btn" id="sub">${isFleet ? 'ส่งคำขอออกบัตรใบใหม่' : 'ส่งคำขอให้หัวหน้าอนุมัติ'}</button>`));
+
+    if (mine?.length) nodes.push(el(`<div class="card"><h3>คำขอของฉัน</h3><div class="list">
+      ${mine.map(r => `<div class="item"><div class="tx">
+        <div style="display:flex;gap:7px;align-items:center">
+          <span class="pill ${r.status === 'approved' ? 'g' : r.status === 'rejected' ? 'e' : 'w'}">${
+            { pending: 'รออนุมัติ', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ', cancelled: 'ยกเลิก' }[r.status] || r.status}</span>
+          <span class="lb">${thDate(new Date(r.created_at))}</span></div>
+        <div class="h" style="margin-top:3px">${esc(r.field_label)}</div>
+        <div class="s">${esc(r.old_value || '(ไม่มี)')}${r.new_value ? ' → ' + esc(r.new_value) : ''}
+          ${r.decision_note ? '<br>หมายเหตุ: ' + esc(r.decision_note) : ''}
+          ${r.fulfillment_status ? '<br><b>' + { pending_issue: '⏳ บัญชีกำลังออกบัตรใบใหม่',
+            issued: '🎁 บัตรพร้อมให้รับแล้ว', collected: '✓ รับบัตรแล้ว' }[r.fulfillment_status] + '</b>' : ''}</div>
+        ${r.fulfillment_status === 'issued' ? `<button class="btn" data-got="${r.id}" style="margin-top:8px;padding:9px">✓ ยืนยันว่ารับบัตรแล้ว</button>` : ''}
+      </div></div>`).join('')}</div></div>`));
+
+    shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
+    document.querySelectorAll('[data-t]').forEach(n => n.onclick = () => { type = n.dataset.t; render(); });
+    if ($('#rc')) $('#rc').querySelectorAll('button').forEach(x => x.onclick = () => {
+      reasonCode = x.dataset.r; $('#rc').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x)); });
+    if ($('#vh')) $('#vh').onchange = e => vehicle = S.vehicles.find(v => v.id === e.target.value);
+    document.querySelectorAll('[data-got]').forEach(b => b.onclick = async () => {
+      const { data } = await sb.rpc('confirm_fleet_card_collected', { p_request: b.dataset.got });
+      toast(data?.ok ? 'อัปเดตเลขบัตรใหม่ให้เรียบร้อยแล้ว' : 'ทำรายการไม่สำเร็จ', !data?.ok);
+      boot();
+    });
+    $('#sub').onclick = async (e) => {
+      const reason = $('#rs').value.trim();
+      if (reason.length < 5) return toast('กรุณาอธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
+      const newVal = isFleet ? '' : needsDates ? $('#d2').value : ($('#nv')?.value.trim() || '');
+      if (!isFleet && !newVal) return toast('กรอกค่าใหม่', 1);
+      e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+      const { data, error } = await sb.rpc('submit_change_request', {
+        p_type: type, p_field: REQ_TYPES.find(t => t[0] === type)[1],
+        p_old: oldVal || null, p_new: newVal, p_reason: reason,
+        p_vehicle: needsVeh ? (vehicle?.id || null) : null,
+        p_from: needsDates ? $('#d1').value : null, p_to: needsDates ? $('#d2').value : null,
+        p_reason_code: isFleet ? reasonCode : null });
+      if (error || data?.ok !== true) { e.target.disabled = false;
+        return toast(error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ', 1); }
+      toast(data.has_supervisor ? 'ส่งคำขอให้หัวหน้าเรียบร้อย' : 'บันทึกคำขอแล้ว แต่ยังไม่พบหัวหน้าในระบบ');
+      go('requests');
+    };
+  };
+  render();
+}
+
+async function viewApprovals() {
+  S.tab = 'approvals'; loading('กำลังโหลดรายการรออนุมัติ…');
+  const code = S.profile.employee_code;
+  const { data } = await sb.from('change_requests').select('*')
+    .eq('approver_employee_code', code).eq('status', 'pending').order('created_at');
+  const rows = data || [];
+  const names = {};
+  if (rows.length) {
+    const ids = [...new Set(rows.map(r => r.user_id))];
+    const { data: ps } = await sb.from('profiles').select('id,full_name,employee_code').in('id', ids);
+    (ps || []).forEach(p => names[p.id] = `${p.full_name || ''} ${p.employee_code || ''}`.trim());
+  }
+  const nodes = rows.length ? rows.map(r => el(`<div class="card">
+      <div style="display:flex"><span class="pill w">รออนุมัติ</span><span class="sp"></span>
+        <span class="lb">${thDT(new Date(r.created_at))}</span></div>
+      <h3 style="margin-top:8px">${esc(r.field_label)}</h3>
+      <div class="lb">${esc(names[r.user_id] || 'ไม่ทราบชื่อ')}</div>
+      <div class="hr"></div>
+      <div class="lb">จาก</div><div class="mono" style="color:var(--faint);text-decoration:line-through">${esc(r.old_value || '(ไม่มี)')}</div>
+      ${r.new_value ? `<div class="lb" style="margin-top:5px">เป็น</div><div class="mono vl">${esc(r.new_value)}</div>` : ''}
+      ${r.reason_code ? `<div class="lb" style="margin-top:5px">สาเหตุ</div><div>${{ damaged: 'บัตรชำรุด', lost: 'บัตรหาย', other: 'อื่นๆ' }[r.reason_code]}</div>` : ''}
+      ${(r.effective_from || r.effective_to) ? `<div class="lb" style="margin-top:5px">ช่วงวันที่</div><div class="mono">${esc(r.effective_from || '')} – ${esc(r.effective_to || '')}</div>` : ''}
+      <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(r.reason)}</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn gh" data-no="${r.id}" style="color:var(--stop)">ไม่อนุมัติ</button>
+        <button class="btn" data-yes="${r.id}">อนุมัติ</button></div></div>`))
+    : [el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอที่รออนุมัติ</span></div>`)];
+  shell('รออนุมัติ', nodes, { tabs: true });
+  const decide = async (id, ok, note) => {
+    const { data } = await sb.rpc('decide_change_request', { p_request: id, p_approve: ok, p_note: note || null });
+    if (data?.ok !== true) return toast('ทำรายการไม่สำเร็จ (' + (data?.code || '') + ')', 1);
+    toast(ok ? (data.sent_to_accounting ? 'อนุมัติแล้ว — ส่งเรื่องให้บัญชี ' + data.sent_to_accounting : 'อนุมัติเรียบร้อย')
+             : 'บันทึกการไม่อนุมัติแล้ว');
+    await refreshCounts(); go('approvals');
+  };
+  document.querySelectorAll('[data-yes]').forEach(b => b.onclick = async () => {
+    if (await askConfirm('อนุมัติคำขอนี้?',
+        'อนุมัติแล้วข้อมูลจะเปลี่ยนทันที และแจ้งผลกลับไปที่พนักงาน', 'อนุมัติ'))
+      decide(b.dataset.yes, true); });
+  document.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => {
+    const n = await askText('ไม่อนุมัติคำขอนี้', 'เหตุผลที่ไม่อนุมัติ',
+      'อธิบายให้พนักงานทราบว่าต้องแก้อะไร', true);
+    if (n !== null) decide(b.dataset.no, false, n); });
+}
+
+async function viewAdmin() {
+  const isAdmin = ['admin', 'superadmin'].includes(S.profile.role);
+  if (!isAdmin) { shell('เครื่องมือ Admin',
+    [el('<div class="note w"><span>🔒</span><span>บัญชีนี้ไม่มีสิทธิ์ Admin</span></div>')], { back: true }); return; }
+
+  const nodes = [
+    el(`<div class="card"><h3>ออก PIN ให้พนักงาน</h3>
+      <div class="sub">สำหรับพนักงานที่ไม่มีอีเมลบริษัท — PIN ใช้เข้าครั้งแรกครั้งเดียว หมดอายุ 7 วัน</div>
+      <label class="f code"><span>รหัสพนักงาน</span>
+        <input id="ac" autocapitalize="characters" placeholder="80011786 / CMT1800500"></label>
+      <button class="btn gh" id="chk" style="margin-top:10px">🔍 ตรวจสอบรหัสพนักงาน</button>
+      <div id="ares"></div></div>`),
+    el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
+    el(`<div class="note i"><span>💻</span><span>นำเข้ารายชื่อพนักงานรายเดือนและซิงก์สาขา ทำจากเครื่องคอมพิวเตอร์<br>
+      <span class="mono" style="font-size:11px">python tools/push_employees.py "&lt;ไฟล์.xlsx&gt;" --effective 2026-09-01</span></span></div>`),
+  ];
+  shell('เครื่องมือ Admin', nodes, { back: true, tabs: true, actions: false });
+
+  (async () => {
+    try {
+      const [{ data: sh }, { data: bt }] = await Promise.all([
+        sb.from('v_store_health').select('*'),
+        sb.from('employee_import_batches').select('*').order('imported_at', { ascending: false }).limit(3),
+      ]);
+      $('#hbox').innerHTML = '<h3>สุขภาพข้อมูล</h3>'
+        + (sh || []).map(r => `<div class="item"><div class="tx"><div class="h">สาขา ${esc(r.chain)}</div>
+            <div class="s">ใช้งาน ${ni(r.stores_active)} / ${ni(r.stores_total)} · มีพิกัด ${ni(r.with_geo)}
+            ${r.last_synced_at ? '· ซิงก์ล่าสุด ' + thDT(new Date(r.last_synced_at)) : ''}</div></div></div>`).join('')
+        + (bt || []).map(b => `<div class="item"><div class="tx"><div class="h">${esc(b.label)}</div>
+            <div class="s">มีผล ${esc(b.effective_date)} · ทั้งหมด ${ni(b.rows_total)} · ใหม่ ${ni(b.rows_inserted)}
+            · เปลี่ยนแปลง ${ni(b.rows_changed)} · หลุดจากไฟล์ ${ni(b.rows_left)}</div></div></div>`).join('');
+    } catch { $('#hbox').innerHTML = '<h3>สุขภาพข้อมูล</h3><div class="lb">ยังไม่มีข้อมูล</div>'; }
+  })();
+
+  $('#chk').onclick = async () => {
+    const code = $('#ac').value.trim().toUpperCase();
+    $('#ares').innerHTML = '<div class="lb" style="margin-top:10px">กำลังตรวจสอบ…</div>';
+    const { data } = await sb.rpc('admin_check_employee', { p_employee_code: code });
+    if (!data || data.ok !== true) {
+      $('#ares').innerHTML = `<div class="note e" style="margin-top:10px"><span>⚠</span><span>${
+        { NOT_ADMIN: 'บัญชีนี้ไม่มีสิทธิ์ Admin',
+          NOT_IN_HR_LIST: 'ไม่พบรหัสพนักงานนี้ในไฟล์รายชื่อพนักงาน' }[data?.code] || 'ตรวจสอบไม่สำเร็จ'}</span></div>`;
+      return;
+    }
+    $('#ares').innerHTML = `<div class="card" style="margin-top:11px;background:#F7F8FA">
+      <div class="vl">${esc(data.full_name || '—')}</div>
+      <div class="lb mono">${esc(data.employee_code)} · ${esc(data.cost_center_code || '-')}${data.onfield === 'Y' ? ' · ภาคสนาม' : ''}</div>
+      <div class="lb" style="margin-top:5px">อีเมลใน HR: ${esc(data.email || '(ไม่มี)')}</div>
+      <div class="lb">หัวหน้า: ${esc(data.supervisor_employee_code || '(ไม่ระบุ)')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <span class="pill ${data.has_account ? 'g' : 'w'}">${data.has_account ? 'มีบัญชีแล้ว' : 'ยังไม่มีบัญชี'}</span>
+        ${data.has_account ? `<span class="pill ${data.device_bound ? 'g' : 'w'}">${data.device_bound ? 'ผูกอุปกรณ์แล้ว' : 'ยังไม่ผูกอุปกรณ์'}</span>` : ''}
+        ${data.has_active_pin ? '<span class="pill b">มี PIN ที่ยังไม่ได้ใช้</span>' : ''}</div>
+      <button class="btn" id="issue" style="margin-top:11px">${data.has_active_pin ? 'ออก PIN ใบใหม่ (ยกเลิกใบเดิม)' : 'ออก PIN'}</button></div>`;
+    $('#issue').onclick = async (e) => {
+      e.target.disabled = true; e.target.textContent = 'กำลังออก PIN…';
+      const { data: r, error } = await sb.functions.invoke('issue-pin', { body: { employee_code: code } });
+      if (error || !r || r.ok !== true) { e.target.disabled = false; e.target.textContent = 'ออก PIN';
+        return toast((r && r.error) || 'ออก PIN ไม่สำเร็จ — ตรวจว่า deploy Edge Function "issue-pin" แล้วหรือยัง', 1); }
+      $('#ares').innerHTML += `<div class="card" style="margin-top:11px;background:var(--y);border-color:var(--y-dk);border-width:2px">
+        <div class="lb" style="color:var(--ink)">PIN ของ ${esc(r.full_name || '')}</div>
+        <div class="mono" style="font-size:32px;font-weight:800;letter-spacing:7px">${esc(r.pin)}</div>
+        <div style="font-size:12px;line-height:1.55;margin-top:5px">แจ้ง PIN นี้ให้พนักงานโดยตรง —
+          ระบบไม่เก็บเป็นตัวเลขไว้ที่ไหน ดูซ้ำไม่ได้ · หมดอายุใน ${r.expires_in_days || 7} วัน</div></div>`;
+    };
+  };
+}
+
+async function viewSettings() {
+  const p = S.profile;
+  const cc = S.master.cost_centers.find(c => c.code === p.cost_center_code);
+  const kv = (k, v) => `<div class="item"><div class="tx"><div class="s">${k}</div><div class="h">${esc(v ?? '—')}</div></div></div>`;
+  const nodes = [
+    el(`<div class="card"><div style="display:flex"><h3 style="flex:1">ข้อมูลพนักงาน</h3>
+      <button class="link" id="ed" style="padding:0">แก้ไข</button></div><div class="list">
+      ${kv('ชื่อ-นามสกุล', p.full_name)}${kv('รหัสพนักงาน', p.employee_code)}
+      ${kv('Cost center', cc?.name)}${kv('Cost center Code', p.cost_center_code)}
+      ${kv('หัวหน้างาน (สายอนุมัติ)', p.supervisor_employee_code)}${kv('อีเมล', p.email)}
+      ${kv('วิธีเข้าระบบ', 'รหัสพนักงาน + PIN')}</div></div>`),
+    el(`<div class="card"><h3>รถของฉัน</h3><div class="list">
+      ${S.vehicles.map(v => kv(v.is_primary ? 'รถหลัก' : 'รถสำรอง',
+        `${v.plate} · ${v.brand_name || ''} ${v.model_name || ''}`)).join('') || kv('ยังไม่มีรถ', '—')}</div>
+      <button class="btn gh" id="gg" style="margin-top:10px">จัดการโรงรถ</button></div>`),
+    // หัวหน้างานเห็นแท็บ "อนุมัติ" แทน "คำขอ" — ต้องมีทางเข้าคำขอของตัวเองด้วย
+    el(`<div class="card"><h3>คำขอเปลี่ยนแปลงข้อมูล</h3>
+      <div class="sub">Fleet card ชำรุด/หาย · เปลี่ยนทะเบียน · เปลี่ยนรถ · ต่ออายุรถสำรอง · ขอเพิ่มโควต้า</div>
+      <button class="btn gh" id="cr">เปิดหน้าคำขอของฉัน</button></div>`),
+    el(`<div class="card"><h3>ความเป็นส่วนตัว</h3>
+      <div class="note g" style="margin-top:8px"><span>🔒</span><span>ระบบบันทึกตำแหน่งเฉพาะช่วง
+        "เริ่มปฏิบัติงาน → สิ้นสุดการทำงาน" เท่านั้น ช่วงเวลาอื่นไม่มีการเก็บพิกัดของคุณ</span></div>
+      <div class="lb" style="margin-top:8px">เวอร์ชันข้อความยินยอมที่รับไว้: ${CFG.consentVersion}</div></div>`),
+    el(`<div class="card"><h3>ข้อจำกัดของเว็บแอป</h3>
+      <div class="sub" style="margin:6px 0 0">เบราว์เซอร์จะหยุดส่งพิกัดถ้าปิดแท็บหรือล็อกหน้าจอไว้นาน
+      ระหว่างเดินทางให้เปิดแอปค้างไว้ (แอปขอไม่ให้จอดับให้อัตโนมัติเท่าที่เครื่องรองรับ)
+      ถ้าต้องการติดตามต่อเนื่องแม้พับหน้าจอ ต้องใช้เวอร์ชัน .apk</div></div>`),
+    el('<button class="btn stop" id="out">ออกจากระบบ</button>'),
+    el(`<div class="lb" style="text-align:center">${CFG.appName} · เว็บแอป 1.0</div>`),
+  ];
+  shell('ตั้งค่า', nodes, { back: true, tabs: true, actions: false });
+  $('#ed').onclick = () => viewProfile(false);
+  $('#gg').onclick = () => go('garage');
+  $('#cr').onclick = () => go('requests');
+  $('#out').onclick = async () => {
+    if (S.trip) return toast('ต้องกด "สิ้นสุดการทำงาน" ให้เรียบร้อยก่อนออกจากระบบ', 1);
+    if (S.pending && !await askConfirm('ยังมีข้อมูลค้างอยู่',
+        `มี ${S.pending} รายการที่ยังไม่ได้ส่งขึ้นระบบ\nถ้าออกตอนนี้ต้องเข้าระบบด้วยเครื่องนี้อีกครั้งเพื่อส่งต่อ`,
+        'ออกจากระบบ', true)) return;
+    stopWatch(); await sb.auth.signOut(); location.reload();
+  };
+}
+
+/* ==================================================================== */
+/*  sync ขึ้น Supabase                                                  */
+/* ==================================================================== */
+let syncing = false;
+async function sync() {
+  if (syncing || !navigator.onLine || !S.profile) { countPending(); return; }
+  syncing = true;
+  try {
+    const t = S.trip || LS.get('lastTrip');
+    if (t) {
+      const row = { id: t.id, user_id: t.user_id, vehicle_id: t.vehicle_id,
+        is_backup_vehicle: !!t.is_backup_vehicle, status: t.status,
+        start_at: t.startAt, start_lat: t.start_lat, start_lng: t.start_lng,
+        start_accuracy_m: t.start_accuracy_m, odo_start: t.odo_start, odo_start_ai: t.odo_start_ai,
+        gps_distance_m: Math.round(t.distM || 0), point_count: (t.points || []).length };
+      if (t.status !== 'active') Object.assign(row, { end_at: t.end_at, end_lat: t.end_lat,
+        end_lng: t.end_lng, end_accuracy_m: t.end_accuracy_m, odo_end: t.odo_end,
+        odo_end_ai: t.odo_end_ai, note: t.note });
+      Object.keys(row).forEach(k => row[k] == null && k !== 'note' && delete row[k]);
+      const { error: e1 } = await sb.from('work_sessions').upsert(row);
+      if (e1) throw e1;
+
+      // จุดพิกัด
+      const unsent = (t.points || []).filter(p => !p._s);
+      for (let i = 0; i < unsent.length; i += 200) {
+        const batch = unsent.slice(i, i + 200);
+        const { error } = await sb.from('session_points').upsert(batch.map(p => ({
+          session_id: t.id, at: p.at, lat: p.lat, lng: p.lng,
+          accuracy_m: p.acc ?? null, speed_mps: p.spd ?? null,
+          heading: p.hdg ?? null, altitude_m: p.alt ?? null })),
+          { onConflict: 'session_id,at', ignoreDuplicates: true });
+        if (error) throw error;
+        batch.forEach(p => p._s = 1);
+      }
+      // จุดปฏิบัติงาน + น้ำมัน
+      for (const s of (t.stops || []).filter(x => x._dirty)) {
+        const { _dirty, ...row2 } = s;
+        const { error } = await sb.from('stops').upsert(row2);
+        if (!error) delete s._dirty;
+      }
+      for (const f of (t.fuels || []).filter(x => x._dirty)) {
+        const { _dirty, ...row2 } = f;
+        const { error } = await sb.from('fuel_records').upsert(row2);
+        if (!error) delete f._dirty;
+      }
+      // รูป
+      for (const m of (t.media || []).filter(x => !x._uploaded)) {
+        const blob = await IDB.get(m.id);
+        if (!blob) { m._uploaded = true; continue; }
+        const path = `${S.profile.id}/${t.id}/${m.kind}_${m.id}.jpg`;
+        const up = await sb.storage.from(CFG.bucket).upload(path, blob,
+          { contentType: blob.type || 'image/jpeg', upsert: true });
+        if (up.error) continue;
+        const { _uploaded, ...mm } = m;
+        const { error } = await sb.from('media').insert({ ...mm, path });
+        if (!error) { m._uploaded = true; await IDB.del(m.id); }
+      }
+      saveTrip();
+      if (t.status !== 'active') {
+        const clean = (t.points || []).every(p => p._s) && (t.media || []).every(m => m._uploaded)
+          && !(t.stops || []).some(s => s._dirty) && !(t.fuels || []).some(f => f._dirty);
+        if (clean) LS.del('lastTrip');
+      }
+    }
+  } catch (e) {
+    console.warn('sync', e?.message || e);
+  } finally { syncing = false; countPending(); }
+}
+
+function countPending() {
+  const t = S.trip || LS.get('lastTrip');
+  let n = 0;
+  if (t) {
+    n += (t.points || []).filter(p => !p._s).length;
+    n += (t.stops || []).filter(s => s._dirty).length;
+    n += (t.fuels || []).filter(f => f._dirty).length;
+    n += (t.media || []).filter(m => !m._uploaded).length;
+  }
+  S.pending = n;
+}
+
+async function refreshQuota() {
+  try { const { data } = await sb.rpc('my_quota_status'); if (data?.ok) S.quota = data; } catch {}
+}
+async function refreshCounts() {
+  try {
+    const { data } = await sb.rpc('my_bootstrap');
+    if (data?.ok) { S.alerts = data.unread_alerts || 0; S.approvals = data.pending_approvals || 0; }
+  } catch {}
+}
+
+/* ==================================================================== */
+/*  router + boot                                                       */
+/* ==================================================================== */
+function go(v, opts) {
+  S.view = v;
+  const map = {
+    home: viewHome, garage: viewGarage, active: viewActive, history: viewHistory,
+    backup: viewBackupRequest,
+    alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
+    admin: viewAdmin, settings: viewSettings,
+  };
+  (map[v] || viewHome)();
+}
+
+async function loadMaster() {
+  const one = (t, cols, order) => sb.from(t).select(cols).eq('active', true).order(order);
+  const pageAll = async (t, cols) => {
+    const out = []; let from = 0;
+    for (;;) {
+      const { data, error } = await sb.from(t).select(cols).eq('active', true)
+        .order('code').range(from, from + 999);
+      if (error) throw error;
+      out.push(...(data || []));
+      if (!data || data.length < 1000) break;
+      from += 1000; if (from > 40000) break;
+    }
+    return out;
+  };
+  const [cc, pv, br, md, ft, jt, st] = await Promise.all([
+    one('cost_centers', 'code,name', 'sort'),
+    sb.from('provinces').select('id,name_th').order('name_th'),
+    one('vehicle_brands', 'id,name', 'sort'),
+    one('vehicle_models', 'id,brand_id,name', 'sort'),
+    one('fuel_types', 'code,name_th', 'sort'),
+    one('job_types', 'code,name_th,billable,needs_store,requires_note', 'sort'),
+    pageAll('stores', 'code,name,legacy_code,chain'),
+  ]);
+  const m = { cost_centers: cc.data || [], provinces: pv.data || [], brands: br.data || [],
+    models: md.data || [], fuel_types: ft.data || [], job_types: jt.data || [], stores: st || [] };
+  LS.set('master', m); return m;
+}
+
+async function boot() {
+  loading('กำลังเตรียมระบบ…');
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { S.profile = null; return viewLogin(); }
+
+  // ผูกอุปกรณ์ (1 บัญชี = 1 เครื่อง)
+  let devId = localStorage.getItem('tl.device');
+  if (!devId) { devId = uuid(); localStorage.setItem('tl.device', devId); }
+  try {
+    const { data: bind } = await sb.rpc('bind_device',
+      { p_device_id: devId, p_label: navigator.userAgent.slice(0, 60) });
+    if (bind && bind.ok !== true && bind.code === 'OTHER_DEVICE') {
+      await sb.auth.signOut();
+      $('#app').innerHTML = '';
+      $('#app').append(el(`<div class="center"><div style="font-size:40px">📵</div>
+        <h2>ยังเข้าใช้งานไม่ได้</h2>
+        <div>บัญชีนี้ผูกไว้กับเครื่อง/เบราว์เซอร์อื่นอยู่แล้ว<br>
+        (${esc(bind.bound_label || 'ไม่ทราบ')})<br><br>
+        ถ้าเปลี่ยนเครื่อง กรุณาติดต่อ Admin เพื่อปลดล็อกอุปกรณ์</div>
+        <button class="btn" onclick="location.reload()">กลับหน้าเข้าสู่ระบบ</button></div>`));
+      return;
+    }
+  } catch (e) { console.warn('bind', e?.message); }
+
+  let bs = null;
+  try { const { data } = await sb.rpc('my_bootstrap'); bs = data; } catch (e) {
+    const cached = LS.get('bootstrap');
+    if (!cached) { $('#app').innerHTML = '';
+      $('#app').append(el(`<div class="center"><div style="font-size:36px">📴</div>
+        <div>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ และยังไม่มีข้อมูลที่เคยโหลดไว้</div>
+        <button class="btn" onclick="location.reload()">ลองใหม่</button></div>`));
+      return; }
+    bs = cached; S.online = false;
+  }
+  if (bs?.ok !== true) {
+    if (bs?.code === 'DISABLED') { await sb.auth.signOut();
+      return fatalNotice('บัญชีนี้ถูกปิดการใช้งาน',
+        'กรุณาติดต่อผู้ดูแลระบบ (Admin) เพื่อเปิดการใช้งานอีกครั้ง'); }
+    // ครั้งแรกที่ login ด้วยอีเมล — ผูกกับข้อมูล HR ให้ก่อน
+    try { await sb.rpc('link_profile_to_employee'); const { data } = await sb.rpc('my_bootstrap'); bs = data; } catch {}
+  }
+  if (bs?.ok !== true) { await sb.auth.signOut();
+    return fatalNotice('เข้าสู่ระบบไม่สมบูรณ์',
+      'ยังไม่พบข้อมูลพนักงานของบัญชีนี้ในระบบ ลองเข้าใหม่อีกครั้ง — ถ้ายังไม่ได้ให้แจ้ง Admin'); }
+
+  LS.set('bootstrap', bs);
+  S.profile = bs.profile; S.vehicles = bs.vehicles || [];
+  S.quota = bs.quota?.ok ? bs.quota : null;
+  S.alerts = bs.unread_alerts || 0; S.approvals = bs.pending_approvals || 0;
+
+  try { S.master = await loadMaster(); }
+  catch { S.master = LS.get('master'); if (!S.master) { toast('โหลดข้อมูลตั้งต้นไม่ได้', 1); } }
+  if (!S.master) return;
+
+  if (S.profile.must_change_pin) return viewSetPin();
+  if (!bs.has_consent) return viewConsent();
+  if (!S.profile.full_name || !S.profile.employee_code || !S.profile.cost_center_code)
+    return viewProfile(true);
+  if (!S.vehicles.length) return viewVehicle({});
+
+  // กู้ทริปที่ค้าง
+  const saved = LS.get('trip');
+  if (saved && saved.status === 'active') {
+    S.trip = saved;
+    S.dwellAnchor = null; S.dwellSince = Date.now(); S.dwellStopId = null;
+    startWatch();
+  } else if (bs.active_session && !saved) {
+    // มีทริปเปิดอยู่ที่เซิร์ฟเวอร์แต่เครื่องนี้ไม่มีข้อมูล
+    const a = bs.active_session;
+    S.trip = { id: a.id, user_id: a.user_id, vehicle_id: a.vehicle_id, status: 'active',
+      startAt: a.start_at, start_lat: a.start_lat, start_lng: a.start_lng,
+      odo_start: a.odo_start, distM: a.gps_distance_m || 0,
+      points: [], stops: [], fuels: [], media: [], _counted: null };
+    const [{ data: sts }, { data: fus }] = await Promise.all([
+      sb.from('stops').select('*').eq('session_id', a.id).order('seq'),
+      sb.from('fuel_records').select('*').eq('session_id', a.id)]);
+    S.trip.stops = sts || []; S.trip.fuels = fus || [];
+    saveTrip(); startWatch();
+  }
+
+  S.ready = true; countPending();
+  go(S.trip ? 'active' : 'home');
+  sync();
+}
+
+/* ---------------------------------------------------------- lifecycle */
+window.addEventListener('online', () => { S.online = true; sync(); if (S.view === 'home') go('home'); });
+window.addEventListener('offline', () => { S.online = false; if (S.view === 'home') go('home'); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (S.trip && S.watchId == null) startWatch();
+    keepAwake(); sync();
+  }
+});
+setInterval(() => {
+  if (!S.ready) return;
+  sync(); checkCurfew();
+  if (S.view === 'active') paintActive();
+}, CFG.syncEverySec * 1000);
+window.addEventListener('beforeunload', (e) => {
+  if (S.trip) { saveTrip(); e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ------------------------------------------------------------- start */
+async function startApp() {
+if (localStorage.getItem('tl.demo') === '1') {
+  // โหมด Demo — ไม่ต่อ Supabase เลย ใช้ฐานข้อมูลปลอม + GPS จำลองในเครื่อง
+  try {
+    const d = await import('./demo.js');
+    d.installDemo(CFG);
+    sb = d.createDemoClient();
+    boot();
+  } catch (e) {
+    localStorage.removeItem('tl.demo');
+    renderSetup(location.protocol === 'file:'
+      ? 'โหมด Demo เปิดไม่ได้เพราะเปิดไฟล์แบบดับเบิลคลิก — ดับเบิลคลิก start-local.bat แทน'
+      : 'เปิดโหมด Demo ไม่ได้ (' + (e?.message || e) + ') — ต้องมีไฟล์ demo.js อยู่ข้าง index.html');
+  }
+} else if (!CFG.url || !CFG.key) {
+  renderSetup();
+} else {
+  try {
+    sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
+    sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_OUT') location.reload(); });
+    boot();
+  } catch (e) {
+    renderSetup('เชื่อมต่อไม่สำเร็จ: ' + (e?.message || e));
+  }
+}
+}
+
+// เปิดแบบ file:// = ใช้ไม่ได้ ขึ้นหน้าอธิบายก่อน (กดข้ามได้ถ้าอยากดูหน้าตาเฉย ๆ)
+if (location.protocol === 'file:' && !sessionStorage.getItem('tl.ignoreFile')) {
+  renderFileProtocolHelp();
+} else {
+  startApp();
+}
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
