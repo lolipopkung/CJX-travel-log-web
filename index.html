@@ -169,11 +169,16 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 /* =====================================================================
    CJx Travel Log — เว็บแอปใช้งานจริง (ไฟล์เดียว)
    ---------------------------------------------------------------------
-   ตั้งค่า 2 บรรทัดล่างนี้ก่อนใช้งาน (หรือปล่อยว่างแล้วกรอกในหน้าตั้งค่า)
-   anon key เปิดเผยได้ตามปกติ ความปลอดภัยอยู่ที่ RLS ในฐานข้อมูล
+   2 บรรทัดล่างนี้ต้องมีค่าก่อนแจกให้พนักงาน — ตั้งด้วย
+       py tools/set_supabase.py <Publishable key>
+   ถ้าปล่อยว่าง เปิดเว็บมาจะเจอหน้าตั้งค่าของผู้ดูแลระบบแทนหน้าเข้าใช้งาน
+   ซึ่งไม่ควรให้พนักงานเห็น
+
+   Publishable / anon key เปิดเผยได้ตามปกติ ไม่ใช่ความลับ
+   ความปลอดภัยอยู่ที่กฎ RLS ในฐานข้อมูล
    ===================================================================== */
-const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
+const SUPABASE_URL = 'https://fyailrukbrioqdcshpas.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_j22tn7nwgpcZZ61rdoFLJA_sAjLEIIo';
 
 const CFG = {
   url: SUPABASE_URL || localStorage.getItem('tl.url') || '',
@@ -258,10 +263,12 @@ window.cjxLogoFallback = (img) => {
   img.replaceWith(svg);
 };
 
-function toast(msg, err) {
+function toast(msg, err, ms) {
   const t = $('#toast'); t.textContent = msg;
   t.className = 'show' + (err ? ' err' : '');
-  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', err ? 4800 : 2600);
+  // ms = ตั้งเวลาเอง ใช้กับข้อความยาวที่ต้องอ่านทัน เช่น สาเหตุที่เข้าระบบไม่ได้
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.className = '', ms || (err ? 4800 : 2600));
 }
 
 function haversineM(a, b, c, d) {
@@ -359,6 +366,36 @@ function keyProblem(k) {
   return 'รูปแบบ key ไม่ถูกต้อง — ต้องขึ้นต้นด้วย sb_publishable_ หรือ eyJ';
 }
 
+/* แปลง error ตอนเข้าระบบเป็นภาษาคน
+   เดิมยุบทุกอย่างเป็น "PIN ไม่ถูกต้อง" ซึ่งทำให้ key ผิดกลายเป็น PIN ผิด
+   เสียเวลาหาสาเหตุ — ตอนนี้อะไรที่ไม่รู้จักจะโชว์ข้อความจริงออกมาตรง ๆ */
+function signInProblem(error) {
+  const m = String(error?.message || error || '');
+  const st = error?.status;
+
+  if (/fetch|network|Failed to fetch/i.test(m))
+    return 'ต่อเซิร์ฟเวอร์ไม่ได้ — เช็กสัญญาณเน็ต หรือ Supabase project ถูกหยุดไว้';
+
+  if (/Invalid API key|No API key/i.test(m) || st === 401 && /api key/i.test(m))
+    return 'คีย์เชื่อมต่อไม่ถูกต้อง (ไม่ใช่เรื่อง PIN) — แจ้งผู้ดูแลระบบ '
+         + 'ให้ตั้งค่าใหม่ด้วย tools/set_supabase.py';
+
+  if (/Invalid login credentials/i.test(m))
+    return 'รหัสพนักงานหรือ PIN ไม่ถูกต้อง — ลืม PIN ให้ติดต่อ Admin';
+
+  if (/Email not confirmed/i.test(m))
+    return 'บัญชีนี้ยังไม่ได้ยืนยัน — แจ้ง Admin ให้กด Confirm ที่ Supabase';
+
+  if (/only request this after|rate limit|Too many/i.test(m))
+    return 'ลองเข้าถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
+
+  if (st === 500 || /Database error/i.test(m))
+    return 'ฐานข้อมูลมีปัญหา — แจ้งผู้ดูแลระบบ (' + m + ')';
+
+  // ไม่รู้จัก = โชว์ของจริง ดีกว่าเดาผิด
+  return 'เข้าระบบไม่สำเร็จ' + (st ? ' [' + st + ']' : '') + ': ' + m;
+}
+
 /* ==================================================================== */
 /*  หน้าตั้งค่าเซิร์ฟเวอร์ (ครั้งแรกเท่านั้น)                              */
 /* ==================================================================== */
@@ -368,7 +405,10 @@ function renderSetup(msg) {
     <div class="center">
       <div class="logo">${logoImg(34)}</div>
       <h2>${CFG.appName}</h2>
-      <div class="hint">ตั้งค่าการเชื่อมต่อครั้งแรก (ทำครั้งเดียว)</div>
+      <div class="hint">หน้านี้สำหรับผู้ดูแลระบบ</div>
+      <div class="note w" style="text-align:left"><span>👷</span><span>
+        <b>ถ้าคุณเป็นพนักงานและเห็นหน้านี้ แปลว่าไฟล์ยังตั้งค่าไม่ครบ</b><br>
+        กรุณาแจ้งผู้ดูแลระบบ — ปกติต้องขึ้นหน้าใส่รหัสพนักงานกับ PIN เลย</span></div>
       ${msg ? `<div class="note e" style="text-align:left"><span>⚠</span><span>${esc(msg)}</span></div>` : ''}
       <label class="f" style="width:100%"><span>Project URL</span>
         <input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(CFG.url)}"></label>
@@ -551,9 +591,7 @@ function viewLogin() {
     const { error } = await sb.auth.signInWithPassword({ email, password: pin });
     if (error) {
       btn.disabled = false; btn.textContent = 'เข้าใช้งาน';
-      return toast(/fetch|network/i.test(String(error.message))
-        ? 'ไม่มีสัญญาณอินเทอร์เน็ต — การเข้าระบบต้องมีเน็ต'
-        : 'รหัสพนักงานหรือ PIN ไม่ถูกต้อง — ลืม PIN ให้ติดต่อ Admin', 1);
+      return toast(signInProblem(error), 1, 7000);
     }
     // ครั้งแรกต้องผูก profile กับรายชื่อ HR ด้วยรหัสพนักงาน
     const { data } = await sb.rpc('claim_pin_account', { p_employee_code: code });
@@ -561,7 +599,10 @@ function viewLogin() {
       toast(({ ALREADY_CLAIMED: 'รหัสพนักงานนี้ถูกใช้กับอีกบัญชีแล้ว แจ้ง Admin',
                NOT_IN_HR_LIST: 'ไม่พบรหัสพนักงานนี้ในรายชื่อ HR แจ้ง Admin',
                EMAIL_MISMATCH: 'ข้อมูลบัญชีไม่ตรงกัน แจ้ง Admin' })[data.code]
-             || 'เข้าระบบไม่สมบูรณ์ (' + data.code + ')', 1);
+             || 'เข้าระบบไม่สมบูรณ์ (' + data.code + ')', 1, 7000);
+      await sb.auth.signOut();
+      btn.disabled = false; btn.textContent = 'เข้าใช้งาน';
+      return;
     }
     localStorage.setItem('tl.lastCode', code);
     boot();
@@ -760,6 +801,138 @@ function viewVehicle(opts = {}) {
 }
 
 /* ==================================================================== */
+/*  เปลี่ยนรถประจำ (ถาวร)                                                */
+/* ==================================================================== */
+/* เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน ไม่ใช่แค่แก้ตัวอักษรบนป้าย
+   จึงต้องกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่ แล้วให้หัวหน้าอนุมัติ
+   อนุมัติแล้วระบบทับข้อมูลรถประจำคันเดิม (รถประจำมีได้คันเดียว)  */
+async function viewPlateChange() {
+  const m = S.master, main = primaryVehicle();
+  if (!main) { toast('ยังไม่มีรถประจำในระบบ', 1); return go('garage'); }
+
+  const { data: mine } = await sb.from('change_requests').select('*')
+    .eq('user_id', S.profile.id).eq('status', 'pending').limit(20);
+  const pend = (mine || []).find(r => r.vehicle_spec);
+  if (pend) {
+    return shell('เปลี่ยนรถประจำ', [
+      el(`<div class="note w"><span>⏳</span><span><b>มีคำขอรออนุมัติอยู่แล้ว</b><br>
+        ขอเปลี่ยนเป็นทะเบียน <span class="mono">${esc(pend.new_value)}</span><br>
+        ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน</span></div>`),
+    ], { back: () => go('requests'), tabs: true, actions: false });
+  }
+
+  let own = main.ownership;
+  const b = el(`<main>
+    <div class="note i"><span>🚗</span><span>ใช้เมื่อ<b>เปลี่ยนรถที่ใช้ประจำแบบถาวร</b>
+      เช่น ซื้อรถใหม่ เปลี่ยนรถบริษัท<br>
+      ถ้าแค่ใช้รถคันอื่นชั่วคราวเพราะรถเสีย ให้เลือก
+      <b>"ใช้รถทดแทนชั่วคราว"</b> แทน</span></div>
+
+    <div class="card"><h3>รถประจำคันปัจจุบัน</h3>
+      <div class="mono" style="font-size:17px;font-weight:800;letter-spacing:1px;margin-top:5px">${esc(main.plate)}</div>
+      <div class="lb">${esc(main.brand_name || '')} ${esc(main.model_name || '')} ·
+        ${esc(main.fuel_name || '')}${main.fleet_card_no ? ' · Fleet ' + esc(main.fleet_card_no) : ''}</div>
+      <div class="hint" style="padding:6px 0 0">อนุมัติแล้วข้อมูลนี้จะถูกแทนที่ด้วยรถคันใหม่
+        ประวัติการเดินทางเดิมยังอยู่ครบ</div></div>
+
+    <div class="card"><h3>ข้อมูลรถคันใหม่</h3>
+      <div class="seg" id="own" style="margin-top:8px">
+        <button data-o="company" class="${main.ownership === 'company' ? 'on' : ''}">🏢 รถบริษัท</button>
+        <button data-o="personal" class="${main.ownership === 'personal' ? 'on' : ''}">👤 รถส่วนตัว</button></div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        <label class="f code"><span>ทะเบียนรถ (กรอกติดกัน ไม่เว้นวรรค)</span>
+          <input id="np" autocapitalize="characters" placeholder="2กก7789"></label>
+        <label class="f"><span>จังหวัดที่จดทะเบียน</span><select id="npv"><option value="">— เลือก —</option>
+          ${m.provinces.map(p => `<option value="${p.id}">${esc(p.name_th)}</option>`).join('')}</select></label>
+        <div class="row">
+          <label class="f"><span>ยี่ห้อ</span><select id="nbr"><option value="">—</option>
+            ${m.brands.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+          <label class="f"><span>รุ่น</span><select id="nmd"><option value="">—</option></select></label></div>
+        <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="nft"><option value="">— เลือก —</option>
+          ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
+        <div id="nfw"></div>
+        <label class="f"><span>หมายเลข Fleet card ของรถคันใหม่ (ถ้ามี)</span>
+          <input id="nfc" inputmode="numeric"></label>
+        <div class="hint" id="nfch">รถบริษัทต้องระบุ · รถส่วนตัวที่ได้รับบัตรก็กรอกได้</div>
+      </div></div>
+
+    <label class="f"><span>เหตุผล (บังคับ)</span>
+      <textarea id="nr" placeholder="เช่น ซื้อรถใหม่แทนคันเดิมที่ขายไปแล้ว"></textarea></label>
+
+    <div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
+      S.profile.supervisor_employee_code
+        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ — ' + supervisorLabel()
+        : 'ยังไม่มีข้อมูลหัวหน้างานในระบบ — แจ้ง Admin'}</span></div>
+
+    <button class="btn" id="nsub">ส่งคำขอให้หัวหน้าอนุมัติ</button>
+  </main>`);
+
+  shell('เปลี่ยนรถประจำ (ถาวร)', [...b.childNodes],
+        { back: () => go('requests'), tabs: true, actions: false });
+
+  $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
+    own = x.dataset.o;
+    $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
+    $('#nfch').textContent = own === 'company'
+      ? 'รถบริษัท — ต้องระบุหมายเลข Fleet card'
+      : 'รถส่วนตัวที่ได้รับบัตรก็กรอกได้ ไม่บังคับ';
+  });
+
+  const fillModels = () => {
+    const bid = +$('#nbr').value;
+    $('#nmd').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
+      .map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  };
+  $('#nbr').onchange = fillModels;
+
+  $('#nft').onchange = () => {
+    const box = $('#nfw'); box.innerHTML = '';
+    const f = $('#nft').value;
+    if (!f || f === main.fuel_type) return;
+    const name = (m.fuel_types.find(x => x.code === f) || {}).name_th || f;
+    box.append(el(`<div class="note w"><span>⛽</span><span>
+      <b>ชนิดน้ำมันต่างจากรถคันเดิม</b> (${esc(main.fuel_name || main.fuel_type)} → ${esc(name)})<br>
+      Fleet card ใบเดิมผูกกับทะเบียนและชนิดน้ำมันเดิม ใช้กับรถคันใหม่ไม่ได้
+      ต้องให้บัญชีออกบัตรใบใหม่ — ระบบจะแนบเรื่องนี้ไปกับคำขอให้</span></div>`));
+  };
+
+  $('#nsub').onclick = async (e) => {
+    const plate = $('#np').value.toUpperCase().replace(/\s+/g, '');
+    if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
+    if (!$('#npv').value || !$('#nbr').value || !$('#nmd').value || !$('#nft').value)
+      return toast('กรอกข้อมูลรถให้ครบ', 1);
+    if (own === 'company' && !$('#nfc').value.trim())
+      return toast('รถบริษัทต้องระบุหมายเลข Fleet card', 1);
+    if ($('#nr').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
+
+    e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+    const { data, error } = await sb.rpc('submit_vehicle_change_request', {
+      p_plate: plate, p_province_id: +$('#npv').value,
+      p_brand_id: +$('#nbr').value, p_model_id: +$('#nmd').value,
+      p_fuel_type: $('#nft').value, p_ownership: own,
+      p_fleet_card: $('#nfc').value.trim() || null,
+      p_reason: $('#nr').value.trim() });
+
+    if (error || data?.ok !== true) {
+      e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
+      return toast(({
+        NO_PRIMARY_VEHICLE: 'ยังไม่มีรถประจำในระบบ',
+        BAD_PLATE: 'ทะเบียนรถไม่ถูกต้อง',
+        BAD_FUEL_TYPE: 'ชนิดน้ำมันไม่ถูกต้อง',
+        NO_REASON: 'ต้องกรอกเหตุผล',
+        COMPANY_NEEDS_FLEET_CARD: 'รถบริษัทต้องระบุหมายเลข Fleet card',
+        REQUEST_PENDING: 'มีคำขอเปลี่ยนรถรออนุมัติอยู่แล้ว',
+        NOTHING_CHANGED: 'ข้อมูลเหมือนรถคันเดิม ไม่มีอะไรเปลี่ยน',
+      })[data?.code] || (error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ'), 1);
+    }
+
+    toast(data.has_supervisor ? 'ส่งคำขอแล้ว รอหัวหน้าอนุมัติ' : 'บันทึกคำขอแล้ว');
+    if (data.fuel_warning) alertLike(data.fuel_warning);
+    go('requests');
+  };
+}
+
+/* ==================================================================== */
 /*  ขอใช้รถสำรองชั่วคราว                                                 */
 /* ==================================================================== */
 /* พนักงานสร้างรถสำรองเองไม่ได้ (RLS ปิดไว้ใน sql/11_backup_vehicle.sql)
@@ -837,7 +1010,7 @@ async function viewBackupRequest() {
 
     <div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
-        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ (รหัส ' + esc(S.profile.supervisor_employee_code) + ')'
+        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ — ' + supervisorLabel()
         : 'ยังไม่มีข้อมูลหัวหน้างานในระบบ — คำขอจะถูกบันทึกไว้แต่ยังไม่มีใครอนุมัติได้ แจ้ง Admin'}</span></div>
 
     <button class="btn" id="bsub">ส่งคำขอให้หัวหน้าอนุมัติ</button>
@@ -936,6 +1109,16 @@ function alertLike(text) {
 /*  หน้าหลัก                                                            */
 /* ==================================================================== */
 /* รถประจำ (ถาวร) — มีได้คนละคันเดียวตามกฎ Fleet card ผูกทะเบียน + ชนิดน้ำมัน */
+/* ชื่อหัวหน้างานคู่กับรหัส — พนักงานจำรหัสหัวหน้าไม่ได้ ต้องเห็นชื่อ
+   ชื่อมาจาก my_bootstrap (sql/17_supervisor_name.sql) ถ้าเซิร์ฟเวอร์ยัง
+   ไม่ได้อัปเดตก็ยังใช้ได้ แค่เหลือรหัสอย่างเดียวเหมือนเดิม */
+function supervisorLabel() {
+  const code = S.profile?.supervisor_employee_code || '';
+  const name = S.supervisorName || '';
+  if (!code) return 'ยังไม่มีข้อมูลหัวหน้างาน';
+  return name ? esc(name) + ' (รหัส ' + esc(code) + ')' : 'รหัส ' + esc(code);
+}
+
 function primaryVehicle() {
   return S.vehicles.find(v => !v.is_backup && v.approval_status === 'approved')
       || S.vehicles.find(v => !v.is_backup) || null;
@@ -2021,15 +2204,18 @@ async function viewAlerts() {
 
 const REQ_TYPES = [
   ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย / ได้บัตรใหม่'],
-  ['plate', 'เปลี่ยนทะเบียนรถ', 'เปลี่ยนป้ายทะเบียน หรือกรอกผิดตอนแรก'],
-  ['vehicle_replace', 'เปลี่ยนรถ / ใช้รถทดแทน', 'เปลี่ยนรถใหม่ หรือใช้รถทดแทนชั่วคราว'],
+  // เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน จึงพาไปกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่
+  ['plate', 'เปลี่ยนรถประจำ (ถาวร)', 'ซื้อรถใหม่ / เปลี่ยนรถที่ใช้ประจำ'],
+  // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
+  ['vehicle_replace', 'ใช้รถทดแทนชั่วคราว', 'รถเสีย เข้าอู่ ต้องใช้รถคันอื่นชั่วคราว'],
   ['backup_extend', 'ต่ออายุการใช้รถสำรอง', 'ยังต้องใช้รถสำรองต่อจากกำหนดเดิม'],
-  ['profile', 'แก้ข้อมูลพนักงาน', 'ชื่อ-นามสกุล หรือ Cost center ไม่ถูกต้อง'],
   ['quota', 'ขอเพิ่มโควต้าน้ำมัน', 'ปริมาณงานเพิ่มขึ้นจนโควต้าไม่พอ'],
 ];
 
 async function viewRequests(opts = {}) {
   S.tab = 'requests';
+  if (opts.preset === 'vehicle_replace') return go('backup');
+  if (opts.preset === 'plate') return go('platechange');
   let type = opts.preset || 'fleet_card';
   let vehicle = opts.vehicle || pickedVehicle();
   let reasonCode = 'damaged';
@@ -2070,10 +2256,15 @@ async function viewRequests(opts = {}) {
             <label class="f"><span>ถึงวันที่</span><input id="d2" type="date" value="${new Date(Date.now()+14*864e5).toISOString().slice(0,10)}"></label></div>`
         : `<label class="f" style="margin-top:11px"><span>ค่าใหม่</span><input id="nv"></label>`}
       <label class="f" style="margin-top:11px"><span>เหตุผล (บังคับ)</span>
-        <textarea id="rs" placeholder="เช่น แถบแม่เหล็กชำรุด รูดที่ปั๊มไม่ได้"></textarea></label></div>`));
+        <textarea id="rs" ${type === 'quota' ? '' :
+          'placeholder="เช่น แถบแม่เหล็กชำรุด รูดที่ปั๊มไม่ได้"'}></textarea></label>
+      ${type === 'quota' ? `<div class="note i" style="margin-top:9px"><span>📋</span><span>
+        การพิจารณาโควต้าน้ำมันใหม่ จะพิจารณาจาก<b>แผนการปฏิบัติงาน</b>
+        โดยจะทบทวน<b>ไตรมาสละครั้ง</b> และจะแจ้งผลให้ทราบทางอีเมลพนักงาน</span></div>` : ''}
+      </div>`));
     nodes.push(el(`<div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
-        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ (รหัส ' + esc(S.profile.supervisor_employee_code) + ')'
+        ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ — ' + supervisorLabel()
         : 'ยังไม่มีข้อมูลหัวหน้างานในระบบ — คำขอจะถูกบันทึกไว้แต่ยังไม่มีใครอนุมัติได้ แจ้ง Admin'}</span></div>`));
     nodes.push(el(`<button class="btn" id="sub">${isFleet ? 'ส่งคำขอออกบัตรใบใหม่' : 'ส่งคำขอให้หัวหน้าอนุมัติ'}</button>`));
 
@@ -2092,7 +2283,12 @@ async function viewRequests(opts = {}) {
       </div></div>`).join('')}</div></div>`));
 
     shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
-    document.querySelectorAll('[data-t]').forEach(n => n.onclick = () => { type = n.dataset.t; render(); });
+    document.querySelectorAll('[data-t]').forEach(n => n.onclick = () => {
+      // 2 ประเภทนี้มีหน้าเฉพาะของตัวเอง ไม่ใช้ฟอร์มกลาง
+      if (n.dataset.t === 'vehicle_replace') return go('backup');
+      if (n.dataset.t === 'plate') return go('platechange');
+      type = n.dataset.t; render();
+    });
     if ($('#rc')) $('#rc').querySelectorAll('button').forEach(x => x.onclick = () => {
       reasonCode = x.dataset.r; $('#rc').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x)); });
     if ($('#vh')) $('#vh').onchange = e => vehicle = S.vehicles.find(v => v.id === e.target.value);
@@ -2244,8 +2440,13 @@ async function viewSettings() {
       <button class="link" id="ed" style="padding:0">แก้ไข</button></div><div class="list">
       ${kv('ชื่อ-นามสกุล', p.full_name)}${kv('รหัสพนักงาน', p.employee_code)}
       ${kv('Cost center', cc?.name)}${kv('Cost center Code', p.cost_center_code)}
-      ${kv('หัวหน้างาน (สายอนุมัติ)', p.supervisor_employee_code)}${kv('อีเมล', p.email)}
-      ${kv('วิธีเข้าระบบ', 'รหัสพนักงาน + PIN')}</div></div>`),
+      ${kv('หัวหน้างาน (สายอนุมัติ)', S.supervisorName ? S.supervisorName + ' · ' + (p.supervisor_employee_code || '') : p.supervisor_employee_code)}
+      ${kv('อีเมล (สำหรับติดต่อ)', p.contact_email || '— ไม่มีในไฟล์ HR —')}
+      ${kv('วิธีเข้าระบบ', 'รหัสพนักงาน + PIN')}</div>
+      ${p.contact_email ? '' : `<div class="note i" style="margin-top:9px"><span>ℹ</span><span>
+        ไม่มีอีเมลในไฟล์รายชื่อ HR — ใช้แอปได้ปกติทุกอย่าง
+        เพียงแต่ระบบส่งแจ้งเตือนทางอีเมลไปหาคุณไม่ได้
+        (แจ้งเตือนในแอปยังเห็นครบ)</span></div>`}</div>`),
     el(`<div class="card"><h3>รถของฉัน</h3><div class="list">
       ${S.vehicles.map(v => kv(v.is_primary ? 'รถหลัก' : 'รถสำรอง',
         `${v.plate} · ${v.brand_name || ''} ${v.model_name || ''}`)).join('') || kv('ยังไม่มีรถ', '—')}</div>
@@ -2376,7 +2577,7 @@ function go(v, opts) {
   S.view = v;
   const map = {
     home: viewHome, garage: viewGarage, active: viewActive, history: viewHistory,
-    backup: viewBackupRequest,
+    backup: viewBackupRequest, platechange: viewPlateChange,
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, settings: viewSettings,
   };
@@ -2460,6 +2661,7 @@ async function boot() {
   S.profile = bs.profile; S.vehicles = bs.vehicles || [];
   S.quota = bs.quota?.ok ? bs.quota : null;
   S.alerts = bs.unread_alerts || 0; S.approvals = bs.pending_approvals || 0;
+  S.supervisorName = bs.supervisor_name || '';
 
   try { S.master = await loadMaster(); }
   catch { S.master = LS.get('master'); if (!S.master) { toast('โหลดข้อมูลตั้งต้นไม่ได้', 1); } }
@@ -2516,6 +2718,12 @@ window.addEventListener('beforeunload', (e) => {
 
 /* ------------------------------------------------------------- start */
 async function startApp() {
+// ?demo=1 เปิดโหมดทดลอง / ?demo=0 ออก — ไว้ให้ทีมทดสอบเข้าได้
+// โดยไม่ต้องผ่านหน้าตั้งค่า (ซึ่งพนักงานจะไม่เห็นแล้วหลังฝังค่า)
+const qDemo = new URLSearchParams(location.search).get('demo');
+if (qDemo === '1') localStorage.setItem('tl.demo', '1');
+if (qDemo === '0') localStorage.removeItem('tl.demo');
+
 if (localStorage.getItem('tl.demo') === '1') {
   // โหมด Demo — ไม่ต่อ Supabase เลย ใช้ฐานข้อมูลปลอม + GPS จำลองในเครื่อง
   try {
