@@ -568,9 +568,10 @@ function viewLogin() {
     <div class="note i"><span>🔑</span><span><b>ยังไม่มี PIN?</b>
       ติดต่อ Admin เพื่อขอ PIN ครั้งแรก — ใช้เข้าได้ครั้งเดียว
       เข้าแล้วระบบจะให้คุณตั้ง PIN ใหม่ที่มีแค่คุณรู้ทันที</span></div>
+    <button class="btn gh" id="forgot">🔓 ลืม PIN — ขอ PIN ใบใหม่</button>
     <div class="note w"><span>❓</span><span><b>ลืม PIN / เปลี่ยนเครื่อง</b>
-      ติดต่อ Admin เพื่อออก PIN ใบใหม่ ระบบไม่ได้เก็บ PIN เป็นตัวเลขไว้ที่ไหน
-      จึงดูย้อนหลังให้ไม่ได้</span></div>
+      กดปุ่มด้านบนเพื่อแจ้ง Admin ระบบไม่ได้เก็บ PIN เป็นตัวเลขไว้ที่ไหน
+      จึงดูย้อนหลังให้ไม่ได้ ต้องออกใบใหม่เท่านั้น</span></div>
     <div class="note g"><span>🔒</span><span>แอปนี้บันทึกตำแหน่งเฉพาะช่วงที่กด
       "เริ่มปฏิบัติงาน" จนถึง "สิ้นสุดการทำงาน" เท่านั้น ไม่ได้ติดตามการเดินทางส่วนตัวของคุณ</span></div>
   </main>`);
@@ -608,6 +609,7 @@ function viewLogin() {
     boot();
   };
 
+  $('#forgot').onclick = () => askPinReset($('#ec').value.trim());
   $('#pinin').onclick = go2;
   $('#pin').onkeydown = (e) => { if (e.key === 'Enter') go2(e); };
   setTimeout(() => { if (!$('#ec').value) $('#ec').focus(); else $('#pin').focus(); }, 150);
@@ -623,13 +625,50 @@ function friendly(e) {
   return s.slice(0, 160);
 }
 
+/* ลืม PIN — ส่งคำขอให้ Admin ออกใบใหม่ (ดู sql/18_pin_reset.sql)
+   ฐานข้อมูลตอบเหมือนกันทุกกรณี ไม่บอกว่ารหัสพนักงานนี้มีจริงไหม
+   ไม่งั้นหน้านี้จะกลายเป็นเครื่องมือไล่เดารหัสพนักงานที่มีอยู่จริง */
+function askPinReset(preset) {
+  const d = el(`<div class="dlg">
+    <div style="font-size:30px;text-align:center">🔓</div>
+    <h3>ขอ PIN ใบใหม่</h3>
+    <div style="font-size:13.5px">กรอกรหัสพนักงานของคุณ ระบบจะแจ้ง Admin
+      ให้ออก PIN ใบใหม่ Admin จะติดต่อกลับเพื่อยืนยันตัวตนก่อนมอบให้</div>
+    <label class="f"><span>รหัสพนักงาน</span>
+      <input id="rc" placeholder="80011786 หรือ CMT1800500"
+             value="${esc(preset || '')}"></label>
+    <button class="btn" id="rs">ส่งคำขอ</button>
+    <button class="link" id="rx">ยกเลิก</button></div>`);
+  overlay(d);
+  $('#rx').onclick = closeOverlay;
+  $('#rs').onclick = async (e) => {
+    const code = $('#rc').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!/^([0-9]{8}|[A-Z]{3}[0-9]{7})$/.test(code))
+      return toast('รหัสพนักงานต้องเป็นตัวเลข 8 หลัก หรือตัวอักษร 3 ตัว + เลข 7 หลัก', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+    try {
+      await sb.rpc('request_pin_reset', { p_employee_code: code });
+    } catch (err) {
+      e.target.disabled = false; e.target.textContent = 'ส่งคำขอ';
+      return toast('ส่งคำขอไม่สำเร็จ: ' + (err?.message || err), 1, 7000);
+    }
+    closeOverlay();
+    toast('ส่งคำขอแล้ว — Admin จะติดต่อกลับเพื่อยืนยันตัวตนแล้วมอบ PIN ใบใหม่ให้',
+          0, 8000);
+  };
+}
+
 /* ==================================================================== */
 /*  ตั้ง PIN ใหม่ / ยินยอม / โปรไฟล์ / รถ                                 */
 /* ==================================================================== */
-function viewSetPin() {
+/* forced = true  ถูกบังคับตั้งครั้งแรก ออกจากหน้านี้ไม่ได้
+   forced = false พนักงานกดเปลี่ยนเอง มีปุ่มย้อนกลับหน้าหลัก */
+function viewSetPin(forced = true) {
   const b = el(`<main>
-    <div class="note w"><span>🛡</span><span>PIN ที่ Admin ออกให้ใช้ได้ครั้งเดียว
-      กรุณาตั้ง PIN ใหม่ที่มีแค่คุณรู้ เพื่อป้องกันคนอื่นเข้ามาบันทึกการเดินทางแทนคุณ<br>
+    <div class="note w"><span>🛡</span><span>${forced
+      ? `PIN ที่ Admin ออกให้ใช้ได้ครั้งเดียว
+      กรุณาตั้ง PIN ใหม่ที่มีแค่คุณรู้ เพื่อป้องกันคนอื่นเข้ามาบันทึกการเดินทางแทนคุณ`
+      : `ตั้ง PIN ใหม่ที่มีแค่คุณรู้`}<br>
       <b>จำ PIN นี้ให้ดี</b> ระบบไม่เก็บเป็นตัวเลขไว้ที่ไหน ลืมแล้วต้องขอ Admin ออกใบใหม่</span></div>
     <div class="card"><h3>บัญชีของคุณ</h3>
       <div class="lb">${esc(S.profile.full_name || '—')}</div>
@@ -639,10 +678,16 @@ function viewSetPin() {
     <label class="f pin"><span>ยืนยัน PIN ใหม่</span>
       <input id="p2" type="password" inputmode="numeric" maxlength="6" placeholder="••••••"></label>
     <div class="hint">ห้ามใช้เลขซ้ำกันทั้งหมด (111111) และเลขเรียง (123456)</div>
-    <button class="btn" id="ok">บันทึก PIN และเริ่มใช้งาน</button>
+    <button class="btn" id="ok">${forced ? 'บันทึก PIN และเริ่มใช้งาน' : 'บันทึก PIN ใหม่'}</button>
   </main>`);
   $('#app').innerHTML = '';
-  $('#app').append(el(`<div class="appbar"><div class="ttl">ตั้ง PIN ของคุณ</div></div>`), b);
+  // ปุ่มย้อนกลับมีเฉพาะตอนกดเปลี่ยนเอง — ตอนถูกบังคับตั้งครั้งแรกห้ามออก
+  // ไม่งั้นจะค้างอยู่โดยที่ PIN ยังเป็นใบที่ผ่านมือ Admin มาแล้ว
+  const bar = el(`<div class="appbar">${forced ? ''
+      : '<button id="bk" aria-label="ย้อนกลับ">←</button>'}<div class="ttl">${
+      forced ? 'ตั้ง PIN ของคุณ' : 'เปลี่ยน PIN'}</div></div>`);
+  $('#app').append(bar, b);
+  if ($('#bk')) $('#bk').onclick = () => go('home');
   $('#ok').onclick = async (e) => {
     const a = $('#p1').value.trim(), c = $('#p2').value.trim();
     if (a !== c) return toast('PIN ทั้งสองช่องไม่ตรงกัน', 1);
@@ -651,10 +696,12 @@ function viewSetPin() {
       return toast('PIN นี้เดาง่ายเกินไป', 1);
     e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
     const { error } = await sb.auth.updateUser({ password: a });
-    if (error) { e.target.disabled = false; e.target.textContent = 'บันทึก PIN และเริ่มใช้งาน';
+    if (error) { e.target.disabled = false;
+      e.target.textContent = forced ? 'บันทึก PIN และเริ่มใช้งาน' : 'บันทึก PIN ใหม่';
       return toast(friendly(error), 1); }
     await sb.rpc('mark_pin_changed');
-    toast('ตั้ง PIN เรียบร้อย'); boot();
+    toast(forced ? 'ตั้ง PIN เรียบร้อย' : 'เปลี่ยน PIN เรียบร้อยแล้ว');
+    if (forced) { boot(); } else { S.profile.must_change_pin = false; go('home'); }
   };
 }
 
@@ -2442,7 +2489,8 @@ async function viewSettings() {
       ${kv('Cost center', cc?.name)}${kv('Cost center Code', p.cost_center_code)}
       ${kv('หัวหน้างาน (สายอนุมัติ)', S.supervisorName ? S.supervisorName + ' · ' + (p.supervisor_employee_code || '') : p.supervisor_employee_code)}
       ${kv('อีเมล (สำหรับติดต่อ)', p.contact_email || '— ไม่มีในไฟล์ HR —')}
-      ${kv('วิธีเข้าระบบ', 'รหัสพนักงาน + PIN')}</div>
+      ${kv('วิธีเข้าระบบ', 'รหัสพนักงาน + PIN')}
+      <button class="btn gh" id="chpin" style="margin-top:10px">🔑 เปลี่ยน PIN</button></div>
       ${p.contact_email ? '' : `<div class="note i" style="margin-top:9px"><span>ℹ</span><span>
         ไม่มีอีเมลในไฟล์รายชื่อ HR — ใช้แอปได้ปกติทุกอย่าง
         เพียงแต่ระบบส่งแจ้งเตือนทางอีเมลไปหาคุณไม่ได้
@@ -2470,6 +2518,8 @@ async function viewSettings() {
   $('#ed').onclick = () => viewProfile(false);
   $('#gg').onclick = () => go('garage');
   $('#cr').onclick = () => go('requests');
+  // เปลี่ยน PIN เอง — หน้าเดียวกับตอนเข้าใช้งานครั้งแรก แต่มีปุ่มย้อนกลับ
+  $('#chpin').onclick = () => viewSetPin(false);
   $('#out').onclick = async () => {
     if (S.trip) return toast('ต้องกด "สิ้นสุดการทำงาน" ให้เรียบร้อยก่อนออกจากระบบ', 1);
     if (S.pending && !await askConfirm('ยังมีข้อมูลค้างอยู่',
