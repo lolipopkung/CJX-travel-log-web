@@ -2410,12 +2410,74 @@ async function viewApprovals() {
     if (n !== null) decide(b.dataset.no, false, n); });
 }
 
+/* คิวคำขอ PIN ใบใหม่ — พนักงานที่กด "ลืม PIN" บนหน้าเข้าระบบ
+   ต้องยืนยันตัวตนก่อนออก PIN ใบใหม่ให้ทุกครั้ง ระบบไม่ยืนยันแทนให้ */
+async function loadResetQueue() {
+  const box = $('#rsbox');
+  if (!box) return;
+  let rows = [];
+  try {
+    const { data } = await sb.from('v_pin_resets_open').select('*').limit(100);
+    rows = data || [];
+  } catch { /* ยังไม่ได้รัน sql/18_pin_reset.sql ก็ไม่ต้องโชว์อะไร */ }
+
+  if (!rows.length) { box.innerHTML = ''; return; }
+
+  box.innerHTML = `<div class="card" style="border-color:var(--warn);border-width:2px">
+    <h3>คำขอ PIN ใบใหม่ (${rows.length})</h3>
+    <div class="sub">พนักงานกดแจ้งว่าลืม PIN — ยืนยันตัวตนก่อนออก PIN ใบใหม่ให้ทุกครั้ง</div>
+    ${rows.map(r => `<div class="item" style="align-items:flex-start">
+      <div class="tx" style="flex:1">
+        <div class="h">${esc(r.full_name || 'ไม่พบชื่อในไฟล์ HR')}</div>
+        <div class="s mono">${esc(r.employee_code)}</div>
+        <div class="s">${
+          !r.has_account ? 'ยังไม่เคยเข้าระบบสำเร็จ — นี่คือ PIN ใบแรกของเขา'
+          : r.bound_device ? 'ผูกกับเครื่อง: ' + esc(r.bound_device)
+          : 'เคยเข้าระบบแล้ว · ยังไม่ได้ผูกเครื่อง'}</div>
+        <div class="s">${r.requested_at ? thDT(new Date(r.requested_at)) : ''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn" style="width:auto;padding:7px 12px"
+                  data-use="${esc(r.employee_code)}">ออก PIN ให้</button>
+          ${r.bound_device ? `<button class="btn gh" style="width:auto;padding:7px 12px"
+                  data-unbind="${esc(r.employee_code)}">ปลดล็อกอุปกรณ์</button>` : ''}
+          <button class="link" data-close="${esc(r.id)}">ปิดคำขอ</button>
+        </div>
+      </div></div>`).join('')}</div>`;
+
+  box.querySelectorAll('[data-use]').forEach(b => b.onclick = () => {
+    $('#ac').value = b.dataset.use;
+    $('#chk').click();
+    $('#ac').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  box.querySelectorAll('[data-unbind]').forEach(b => b.onclick = async () => {
+    const code = b.dataset.unbind;
+    if (!await askConfirm('ปลดล็อกอุปกรณ์',
+        `ปลดการผูกเครื่องของ ${code} ใช่ไหม\n\n` +
+        'หลังปลดแล้ว เครื่องถัดไปที่เข้าระบบสำเร็จจะกลายเป็นเครื่องที่ผูกไว้แทน',
+        'ปลดล็อก')) return;
+    const { data } = await sb.rpc('admin_unbind_device', { p_employee_code: code });
+    if (data?.ok !== true) return toast('ปลดล็อกไม่สำเร็จ', 1);
+    toast('ปลดล็อกอุปกรณ์ของ ' + code + ' แล้ว');
+    loadResetQueue();
+  });
+
+  box.querySelectorAll('[data-close]').forEach(b => b.onclick = async () => {
+    if (!await askConfirm('ปิดคำขอนี้',
+        'ปิดคำขอโดยไม่ออก PIN ใบใหม่ใช่ไหม', 'ปิดคำขอ')) return;
+    await sb.rpc('admin_close_pin_reset', { p_id: b.dataset.close });
+    toast('ปิดคำขอแล้ว');
+    loadResetQueue();
+  });
+}
+
 async function viewAdmin() {
   const isAdmin = ['admin', 'superadmin'].includes(S.profile.role);
   if (!isAdmin) { shell('เครื่องมือ Admin',
     [el('<div class="note w"><span>🔒</span><span>บัญชีนี้ไม่มีสิทธิ์ Admin</span></div>')], { back: true }); return; }
 
   const nodes = [
+    el('<div id="rsbox"></div>'),
     el(`<div class="card"><h3>ออก PIN ให้พนักงาน</h3>
       <div class="sub">สำหรับพนักงานที่ไม่มีอีเมลบริษัท — PIN ใช้เข้าครั้งแรกครั้งเดียว หมดอายุ 7 วัน</div>
       <label class="f code"><span>รหัสพนักงาน</span>
@@ -2427,6 +2489,8 @@ async function viewAdmin() {
       <span class="mono" style="font-size:11px">python tools/push_employees.py "&lt;ไฟล์.xlsx&gt;" --effective 2026-09-01</span></span></div>`),
   ];
   shell('เครื่องมือ Admin', nodes, { back: true, tabs: true, actions: false });
+
+  loadResetQueue();
 
   (async () => {
     try {
