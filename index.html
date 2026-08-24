@@ -7,6 +7,12 @@
 <title>CJx Travel Log</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
+<!-- iPhone: เพิ่มลงหน้าจอโฮมแล้วเปิดเต็มจอ ไม่มีแถบ Safari คร่อม -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CJx Travel Log">
+<!-- กัน iOS ซูมเองตอนโฟกัสช่องกรอก ซึ่งทำให้เลย์เอาต์เพี้ยน -->
+<meta name="format-detection" content="telephone=no">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -44,10 +50,21 @@ h1,h2,h3,.disp{font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;margin
 main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
 .nav{display:flex;background:#fff;border-top:1px solid var(--rule);position:sticky;bottom:0;
   padding-bottom:var(--safe-b);z-index:20}
-.nav button{flex:1;background:none;border:0;padding:8px 0 9px;font:inherit;font-size:10.5px;
-  color:var(--soft);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
-.nav button.on{color:var(--ink);font-weight:700}
-.nav .g{font-size:19px;line-height:1}
+.nav button{flex:1;background:none;border:0;padding:7px 0 8px;font:inherit;font-size:10.5px;
+  color:var(--soft);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+.nav button.on{font-weight:700}
+/* สีประจำปุ่มอยู่ในวงกลมรอบไอคอนเท่านั้น ไม่ทาทั้งปุ่ม
+   ให้แยกปุ่มด้วยสายตาได้โดยไม่ต้องอ่านตัวหนังสือ — พนักงานใช้กลางแดดและรีบ */
+.nav .g{font-size:19px;line-height:1;width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--nav-c,#EEF0F3);transition:background .12s}
+.nav button.on .g{box-shadow:inset 0 0 0 2px var(--nav-b,var(--y-dk))}
+.nav button.on{color:var(--nav-t,var(--ink))}
+.nav button[data-v="home"]     {--nav-c:#FFF3CC;--nav-b:#E6BE00;--nav-t:#8A6D00}
+.nav button[data-v="history"]  {--nav-c:#E3ECFD;--nav-b:#2563EB;--nav-t:#1D4ED8}
+.nav button[data-v="alerts"]   {--nav-c:#FFE9D9;--nav-b:#EA580C;--nav-t:#C2410C}
+.nav button[data-v="requests"] {--nav-c:#EDE6FE;--nav-b:#7C3AED;--nav-t:#6D28D9}
+.nav button[data-v="approvals"]{--nav-c:#DCF3E5;--nav-b:#16A34A;--nav-t:#15803D}
 
 /* ---------- blocks ---------- */
 .card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:14px}
@@ -1290,6 +1307,13 @@ function viewHome() {
     nodes.push(el(`<div class="note g"><span>🔒</span><span>ระบบจะเริ่มบันทึกเส้นทางเมื่อกดปุ่มนี้ และหยุดทันทีที่กด "สิ้นสุดการทำงาน"</span></div>`));
   } else {
     const open = (t.stops || []).filter(s => !s.job_type_code).length;
+    if (IS_IOS) {
+      // ข้อจำกัดของ Safari ที่ปิดไม่ได้ — ต้องบอกทุกครั้งที่มีทริปเปิดอยู่
+      nodes.push(el(`<div class="note e"><span>📱</span><span>
+        <b>iPhone: ห้ามล็อกหน้าจอหรือสลับไปแอปอื่นระหว่างเดินทาง</b><br>
+        Safari จะหยุดส่งพิกัดทันที ระยะทางช่วงนั้นจะไม่ถูกนับและเบิกไม่ได้
+        — เสียบสายชาร์จแล้วเปิดแอปค้างไว้</span></div>`));
+    }
     nodes.push(el(`<div class="card" style="border:2px solid var(--g)">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="color:var(--g)">◉</span><h3 style="flex:1">กำลังปฏิบัติงานอยู่</h3>
@@ -1382,6 +1406,21 @@ function getPos(timeout = 20000) {
       p => res(p), e => rej(e),
       { enableHighAccuracy: true, timeout, maximumAge: 0 });
   });
+}
+
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/* เตือนช่วงที่ระบบตาบอด — เรียกตอนกลับเข้าแอประหว่างมีทริปเปิดอยู่ */
+function warnGpsGap() {
+  const t = S.trip;
+  if (!t) return;
+  const last = t.points[t.points.length - 1];
+  const since = last ? Date.now() - new Date(last.at) : 0;
+  const mins = Math.round(since / 60000);
+  if (mins < 3) return;
+  toast(`ระบบไม่ได้รับพิกัดมา ${mins} นาที — ระยะทางช่วงนั้นไม่ถูกนับ `
+      + 'กรุณาเปิดแอปค้างไว้ตลอดการเดินทาง', 1, 9000);
 }
 
 async function keepAwake() {
@@ -2819,6 +2858,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     if (S.trip && S.watchId == null) startWatch();
     keepAwake(); sync();
+    // กลับเข้าแอปแล้วเช็กว่าช่วงที่ไม่ได้ดูอยู่ ระบบตาบอดไปนานแค่ไหน
+    warnGpsGap();
   }
 });
 setInterval(() => {
