@@ -13,6 +13,10 @@
 <meta name="apple-mobile-web-app-title" content="CJx Travel Log">
 <!-- กัน iOS ซูมเองตอนโฟกัสช่องกรอก ซึ่งทำให้เลย์เอาต์เพี้ยน -->
 <meta name="format-detection" content="telephone=no">
+<!-- แผนที่เส้นทาง — OpenStreetMap ไม่ต้องใช้ API key และไม่มีค่าใช้จ่าย
+     โหลดไม่ได้ (ออฟไลน์) จะถอยไปวาดเส้นทางแบบเดิมบน canvas ให้อัตโนมัติ -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -68,6 +72,8 @@ main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
 
 /* ---------- blocks ---------- */
 .card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:14px}
+.map{height:340px;border-radius:12px;overflow:hidden;background:#E9EFE8}
+.map .leaflet-control-attribution{font-size:9px}
 .card>h3{font-size:15px;font-weight:600;margin-bottom:4px}
 .card>.sub{font-size:12.5px;color:var(--soft);margin-bottom:10px}
 .row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
@@ -213,10 +219,16 @@ const CFG = {
   gpsMaxAccuracyM: 50,
   gpsMinMoveM: 25,
   gpsMaxSpeedMps: 55,
+  // ระยะจากเลขไมล์ต่างจากระยะ GPS เกินกี่ส่วน = ผิดปกติ ต้องแจ้งหัวหน้า
+  // ต้องตรงกับ odo_gap_limit() ใน sql/23_trip_alerts.sql
+  odoGapWarnPct: 0.10,
   // ช่อง "เลขไมล์ตอนเติม" ในหน้าเติมน้ำมัน — ปิดไว้ตามที่สั่ง 21 ส.ค. 2569
   // ยังไม่ต้องใช้ แต่คอลัมน์ fuel_records.odo_at_fill ยังอยู่
   // เปิดคืนเมื่อไหร่ก็เปลี่ยนเป็น true บรรทัดเดียว
   showFuelOdometer: false,
+  // ห่างกันเกินเท่านี้ = ระบบไม่ได้รับสัญญาณช่วงนั้น ต้องวาดเป็นเส้นประ
+  // ไม่ใช่เส้นตรงทึบที่ทำให้เข้าใจว่าขับไปตามนั้นจริง
+  gpsBlindGapSec: 90,
   gpsMinGapSec: 3,          // อย่าเก็บจุดถี่กว่านี้ — 10 ชม. x 1 จุด/วินาที = localStorage ล้น
   keepPointsInDevice: 1500, // จุดที่ส่งขึ้นระบบแล้ว เก็บในเครื่องไว้เท่าที่พอวาดเส้นทาง
   curfewUserHour: 21,
@@ -576,7 +588,7 @@ function viewLogin() {
     </div>
     <label class="f code"><span>รหัสพนักงาน</span>
       <input id="ec" autocapitalize="characters" autocomplete="username"
-             placeholder="80011786 หรือ CMT1800500"
+             placeholder="80xxxxxx หรือ CMTxxxxxxx"
              value="${esc(localStorage.getItem('tl.lastCode') || '')}"></label>
     <label class="f pin"><span>PIN ${CFG.pinLength} หลัก</span>
       <input id="pin" type="password" inputmode="numeric" maxlength="${CFG.pinLength}"
@@ -652,7 +664,7 @@ function askPinReset(preset) {
     <div style="font-size:13.5px">กรอกรหัสพนักงานของคุณ ระบบจะแจ้ง Admin
       ให้ออก PIN ใบใหม่ Admin จะติดต่อกลับเพื่อยืนยันตัวตนก่อนมอบให้</div>
     <label class="f"><span>รหัสพนักงาน</span>
-      <input id="rc" placeholder="80011786 หรือ CMT1800500"
+      <input id="rc" placeholder="80xxxxxx หรือ CMTxxxxxxx"
              value="${esc(preset || '')}"></label>
     <button class="btn" id="rs">ส่งคำขอ</button>
     <button class="link" id="rx">ยกเลิก</button></div>`);
@@ -762,7 +774,7 @@ function viewProfile(first) {
         <label class="f"><span>ชื่อ-นามสกุล</span><input id="fn" value="${esc(p.full_name || '')}"></label>
         <label class="f code"><span>รหัสพนักงาน ${locked ? '🔒' : ''}</span>
           <input id="ec" value="${esc(p.employee_code || '')}" ${locked ? 'readonly' : ''}
-                 autocapitalize="characters" placeholder="80011786 / CMT1800500"></label>
+                 autocapitalize="characters" placeholder="80xxxxxx / CMTxxxxxxx"></label>
         <div class="hint">${locked ? 'ล็อกไว้แล้ว — แก้ได้โดย Admin เท่านั้น' : 'ตั้งได้ครั้งเดียว ตรวจให้แน่ใจก่อนบันทึก'}</div>
         <label class="f"><span>Cost center</span><select id="cc">
           <option value="">— เลือก —</option>
@@ -1307,7 +1319,18 @@ function viewHome() {
     nodes.push(el(`<div class="note g"><span>🔒</span><span>ระบบจะเริ่มบันทึกเส้นทางเมื่อกดปุ่มนี้ และหยุดทันทีที่กด "สิ้นสุดการทำงาน"</span></div>`));
   } else {
     const open = (t.stops || []).filter(s => !s.job_type_code).length;
-    if (IS_IOS) {
+    // ในเปลือกแอป Android ไม่ต้องเตือน เพราะเก็บต่อได้แม้ล็อกจอ
+    if (NATIVE.on) {
+      nodes.push(el(`<div class="note g"><span>🛰</span><span>
+        <b>กำลังบันทึกเส้นทางแม้ล็อกหน้าจอ</b> — แอปเก็บพิกัดต่อเนื่องจนกว่าจะกด
+        "สิ้นสุดการทำงาน" ปิดหน้าจอหรือสลับไปแอปอื่นได้ตามปกติ</span></div>`));
+    } else {
+      nodes.push(el(`<div class="note w"><span>📌</span><span>
+        <b>เปิดแอปค้างไว้ตลอดการเดินทาง</b> — เว็บแอปเก็บพิกัดได้เฉพาะตอนที่หน้าจอ
+        แสดงแอปนี้อยู่ สลับไปแอปอื่นหรือล็อกจอเมื่อไหร่ ระบบหยุดบันทึกทันที
+        และระยะทางช่วงนั้นจะไม่ถูกนับ</span></div>`));
+    }
+    if (IS_IOS && !NATIVE.on) {
       // ข้อจำกัดของ Safari ที่ปิดไม่ได้ — ต้องบอกทุกครั้งที่มีทริปเปิดอยู่
       nodes.push(el(`<div class="note e"><span>📱</span><span>
         <b>iPhone: ห้ามล็อกหน้าจอหรือสลับไปแอปอื่นระหว่างเดินทาง</b><br>
@@ -1408,6 +1431,83 @@ function getPos(timeout = 20000) {
   });
 }
 
+/* ==================================================================
+   สะพานคุยกับเปลือกแอป Android (โฟลเดอร์ shell/)
+   ------------------------------------------------------------------
+   เปิดในเบราว์เซอร์ธรรมดา -> NATIVE.on = false ใช้ GPS ของเบราว์เซอร์เหมือนเดิม
+   เปิดในเปลือกแอป        -> NATIVE.on = true  ใช้ GPS ของแอปที่เก็บต่อได้แม้ล็อกจอ
+
+   ตั้งใจให้เปลือกไม่แตะ token และไม่คุยกับ Supabase เอง มันแค่พักพิกัดไว้
+   แล้วเว็บมาดึงไปเข้าคิวเดิม ลดจุดที่จะพลาดเรื่องสิทธิ์เหลือที่เดียว
+   ================================================================== */
+const NATIVE = {
+  get on() { return !!(window.CJX_NATIVE && window.CJXNative); },
+  _seq: 0,
+  _waiting: new Map(),
+
+  call(cmd, extra) {
+    if (!this.on) return Promise.resolve(null);
+    const reqId = 'r' + (++this._seq);
+    return new Promise((resolve) => {
+      this._waiting.set(reqId, resolve);
+      // ไม่ตอบใน 8 วินาที ถือว่าเปลือกมีปัญหา อย่าค้างรอ
+      setTimeout(() => {
+        if (this._waiting.has(reqId)) { this._waiting.delete(reqId); resolve(null); }
+      }, 8000);
+      try {
+        window.CJXNative.postMessage(JSON.stringify({ cmd, reqId, ...(extra || {}) }));
+      } catch (e) {
+        this._waiting.delete(reqId); resolve(null);
+      }
+    });
+  },
+
+  startTracking(sessionId) { return this.call('start', { sessionId }); },
+  stopTracking()           { return this.call('stop'); },
+  drain()                  { return this.call('drain'); },
+};
+
+window.cjxNativeReply = (reqId, payload) => {
+  const fn = NATIVE._waiting.get(reqId);
+  if (fn) { NATIVE._waiting.delete(reqId); fn(payload); }
+};
+
+/* กลับเข้าแอปแล้ว เปลือกเรียกตัวนี้ให้มาเก็บพิกัดที่ค้างไว้ */
+window.cjxNativeResumed = () => { drainNativePoints(); };
+
+/* เปลือกตั้ง window.CJX_NATIVE ตอนหน้าโหลดเสร็จ ซึ่งอาจช้ากว่าที่เว็บ
+   กู้ทริปค้างแล้วสั่ง startWatch() ไปแล้ว ถ้าไม่สลับตรงนี้ ทริปนั้นจะถูก
+   เบราว์เซอร์เก็บแทน แล้วพอล็อกจอก็ขาดช่วง ทั้งที่ติดตั้งแอปไว้แล้ว */
+window.addEventListener('cjx-native-ready', () => {
+  if (!S.trip) return;
+  if (S.watchId != null) {                 // กำลังใช้ของเบราว์เซอร์อยู่ -> เลิก
+    try { navigator.geolocation.clearWatch(S.watchId); } catch {}
+    S.watchId = null;
+  }
+  startWatch();                            // คราวนี้เข้าทางเปลือก
+  if (S.view === 'active') go('active');   // อัปเดตข้อความสถานะบนหน้าจอ
+});
+
+/* ดึงพิกัดที่เปลือกเก็บไว้เข้าคิวเดิมของเว็บ
+   ผ่าน onPos ตัวเดียวกับ GPS ของเบราว์เซอร์ จะได้คิดระยะทาง ตรวจการแวะ
+   และบันทึกด้วยตรรกะชุดเดียวกันทั้งหมด ไม่มีทางสองมาตรฐาน */
+async function drainNativePoints() {
+  if (!NATIVE.on || !S.trip) return 0;
+  const r = await NATIVE.drain();
+  const pts = r?.points || [];
+  for (const p of pts) {
+    onPos({
+      coords: {
+        latitude: p.lat, longitude: p.lng, accuracy: p.acc,
+        speed: p.spd, heading: p.hdg, altitude: p.alt,
+      },
+      timestamp: new Date(p.at).getTime(),
+    });
+  }
+  if (pts.length) { saveTrip(); paintActive(); }
+  return pts.length;
+}
+
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -1415,6 +1515,7 @@ const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
 function warnGpsGap() {
   const t = S.trip;
   if (!t) return;
+  if (NATIVE.on) return;        // เปลือกเก็บต่อให้ตลอด ไม่มีช่วงตาบอด
   const last = t.points[t.points.length - 1];
   const since = last ? Date.now() - new Date(last.at) : 0;
   const mins = Math.round(since / 60000);
@@ -1433,7 +1534,23 @@ async function keepAwake() {
 }
 function releaseAwake() { try { S.wakeLock?.release(); } catch {} S.wakeLock = null; }
 
+/* กำลังบันทึกเส้นทางอยู่จริงไหม
+   โหมดเปลือกแอปไม่ได้ใช้ watchPosition ของเบราว์เซอร์ จึงดูที่ตัวจับเวลาแทน */
+function tracking() { return NATIVE.on ? S.nativeTimer != null : S.watchId != null; }
+
 function startWatch() {
+  // อยู่ในเปลือกแอป -> ให้แอปเก็บแทน เพราะเก็บต่อได้แม้ล็อกหน้าจอ
+  // ไม่เปิด watchPosition ของเบราว์เซอร์ซ้ำ จะได้ไม่นับจุดซ้ำสองทาง
+  if (NATIVE.on) {
+    NATIVE.startTracking(S.trip?.id).then(r => {
+      if (r && r.ok === false && r.error) toast(r.error, 1, 8000);
+    });
+    if (S.nativeTimer == null) {
+      // ระหว่างที่ดูหน้าจออยู่ ดึงมาแสดงผลทุก 5 วินาที ให้ตัวเลขขยับตามจริง
+      S.nativeTimer = setInterval(drainNativePoints, 5000);
+    }
+    return;
+  }
   if (S.watchId != null || !navigator.geolocation) return;
   S.watchId = navigator.geolocation.watchPosition(onPos,
     e => console.warn('gps', e.message),
@@ -1441,6 +1558,8 @@ function startWatch() {
   keepAwake();
 }
 function stopWatch() {
+  if (S.nativeTimer != null) { clearInterval(S.nativeTimer); S.nativeTimer = null; }
+  if (NATIVE.on) { drainNativePoints().then(() => NATIVE.stopTracking()); }
   if (S.watchId != null) navigator.geolocation.clearWatch(S.watchId);
   S.watchId = null; releaseAwake();
 }
@@ -1599,6 +1718,34 @@ async function readImage(file, kind) {
   } catch { return { status: 'unavailable', data: null }; }
 }
 
+/* บังคับถ่ายสด — capture="environment" บอกเบราว์เซอร์ให้เปิดกล้อง
+   แต่ Android บางรุ่นไม่สนใจแล้วเปิดตัวเลือกไฟล์ให้อยู่ดี
+   จึงต้องกันอีกชั้นด้วยเวลาที่ไฟล์ถูกสร้าง รูปที่เพิ่งถ่ายจะมีเวลาเป็นเดี๋ยวนี้
+   ส่วนรูปจากอัลบั้มจะเป็นเวลาที่ถ่ายไว้เมื่อก่อน */
+const FRESH_PHOTO_SEC = 180;
+
+function freshPhotoProblem(file) {
+  const lm = Number(file?.lastModified || 0);
+  if (!lm) return null;                       // อ่านเวลาไม่ได้ ปล่อยผ่าน
+  const ageSec = (Date.now() - lm) / 1000;
+  if (ageSec <= FRESH_PHOTO_SEC) return null;
+  const mins = Math.round(ageSec / 60);
+  return 'รูปนี้ถ่ายไว้เมื่อ ' + (mins < 60 ? mins + ' นาทีที่แล้ว'
+      : Math.round(mins / 60) + ' ชั่วโมงที่แล้ว')
+    + ' — ต้องถ่ายสดตอนนี้เท่านั้น ห้ามเลือกรูปจากอัลบั้ม';
+}
+
+/* เลขไมล์ที่พิมพ์ต้องตรงกับที่ AI อ่านได้จากรูป
+   คืน null = ผ่าน, คืนข้อความ = ไม่ผ่าน
+   ถ้า AI อ่านไม่ได้เลย (ไม่มีสัญญาณ/บริการล่ม) จะไม่บล็อก ไม่งั้นพนักงาน
+   ภาคสนามที่เน็ตไม่ดีจะเริ่มงานไม่ได้ทั้งวัน */
+function odoMismatch(typed, aiKm) {
+  if (aiKm == null) return null;
+  if (Number(typed) === Number(aiKm)) return null;
+  return 'เลขไมล์ที่กรอก (' + ni(typed) + ') ไม่ตรงกับที่อ่านได้จากรูป ('
+    + ni(aiKm) + ') — แก้ให้ตรง หรือถ่ายรูปใหม่ให้ชัด';
+}
+
 function viewTripStart(pos) {
   const v = pickedVehicle(), c = pos.coords, stamped = new Date();
   let photo = null, ocr = null, photoOk = false;
@@ -1617,7 +1764,8 @@ function viewTripStart(pos) {
       ${photoField('op', 'ยังไม่ได้ถ่ายรูปเลขไมล์')}
       <label class="f big" style="margin-top:11px"><span>เลขไมล์ต้นทาง (กม.)</span>
         <input id="odo" inputmode="numeric" maxlength="7" placeholder="128470"></label>
-      <div class="hint" id="ohint">AI จะเติมให้จากรูป — แก้ได้ถ้าอ่านผิด</div></div>
+      <div class="hint" id="ohint">AI จะเติมให้จากรูป — เลขที่กรอกต้องตรงกับรูป</div>
+      <div id="omis"></div></div>
     <button class="btn lg" id="go">✓ ยืนยันเริ่มงาน และเริ่มบันทึกเส้นทาง</button>
     <button class="link" id="re">จับพิกัดใหม่</button>
   </main>`);
@@ -1626,6 +1774,12 @@ function viewTripStart(pos) {
   $('#re').onclick = startFlow;
   $('#op').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
+    const stale = freshPhotoProblem(f);
+    if (stale) {
+      e.target.value = '';
+      $('#ohint').innerHTML = `<b style="color:var(--r)">${esc(stale)}</b>`;
+      return toast(stale, 1, 8000);
+    }
     photo = f; photoOk = false; ocr = null;
     $('#opph').outerHTML = `<img class="thumb" id="opph" alt="เลขไมล์ต้นทาง" src="${URL.createObjectURL(f)}">`;
     $('#ohint').textContent = 'กำลังให้ AI อ่านเลขไมล์…';
@@ -1637,7 +1791,8 @@ function viewTripStart(pos) {
       $('#odo').value = r.data.odometer_km;
       $('#odo').readOnly = false;
       $('#ohint').innerHTML = `AI อ่านได้ <b>${r.data.odometer_km}</b> · ความมั่นใจ ${
-        r.data.confidence || '-'} — แก้ได้ถ้าอ่านผิด`;
+        r.data.confidence || '-'} — ถ้าอ่านผิดให้ถ่ายรูปใหม่ ไม่ใช่แก้ตัวเลข`;
+      checkStartOdo();
     } else if (r.status === 'unreadable') {
       // ภาพไม่ชัดพอให้ AI อ่านได้ -> ไม่ให้บันทึก ต้องถ่ายใหม่
       $('#odo').value = '';
@@ -1651,11 +1806,25 @@ function viewTripStart(pos) {
     $('#go').disabled = false;
   };
 
+  // เทียบเลขที่พิมพ์กับเลขที่ AI อ่านได้ ทุกครั้งที่พิมพ์
+  const checkStartOdo = () => {
+    const typed = parseInt(String($('#odo').value).replace(/\D/g, ''), 10);
+    const bad = typed ? odoMismatch(typed, ocr?.odometer_km ?? null) : null;
+    const box = $('#omis');
+    box.innerHTML = bad
+      ? `<div class="note e" style="margin-top:9px"><span>⛔</span><span>${esc(bad)}</span></div>`
+      : '';
+    $('#go').disabled = !!bad;
+  };
+  $('#odo').oninput = checkStartOdo;
+
   $('#go').onclick = async (e) => {
     const odo = parseInt($('#odo').value.replace(/\D/g, ''), 10);
     if (!photo) return toast('ต้องถ่ายรูปเลขไมล์ต้นทางก่อน', 1);
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ต้นทาง', 1);
+    const mis = odoMismatch(odo, ocr?.odometer_km ?? null);
+    if (mis) return toast(mis, 1, 8000);
     e.target.disabled = true; e.target.textContent = 'กำลังเริ่ม…';
 
     const id = uuid();
@@ -1721,9 +1890,11 @@ function viewActive() {
       <div class="s">${esc(f.station || 'ไม่ระบุปั๊ม')} · ${thTime(new Date(f.filled_at))}</div></div></div>`).join('');
 
   const nodes = [
-    el(`<div class="note ${S.watchId != null ? 'g' : 'w'}"><span>${S.watchId != null ? '◉' : '⏸'}</span><span>${
-      S.watchId != null ? '<b>กำลังบันทึกเส้นทางแบบต่อเนื่อง</b><br>เปิดแอปนี้ค้างไว้ระหว่างเดินทาง ถ้าปิดแท็บหรือล็อกหน้าจอนาน เบราว์เซอร์จะหยุดส่งพิกัด'
-                            : 'การบันทึกเส้นทางหยุดอยู่ — แตะปุ่มด้านล่างเพื่อเริ่มใหม่'}</span></div>`),
+    el(`<div class="note ${tracking() ? 'g' : 'w'}"><span>${tracking() ? '◉' : '⏸'}</span><span>${
+      !tracking() ? 'การบันทึกเส้นทางหยุดอยู่ — แตะปุ่มด้านล่างเพื่อเริ่มใหม่'
+      : NATIVE.on
+        ? '<b>กำลังบันทึกเส้นทางแม้ล็อกหน้าจอ</b><br>ปิดหน้าจอหรือสลับไปแอปอื่นได้ตามปกติ ระบบเก็บพิกัดต่อจนกว่าจะกด "สิ้นสุดการทำงาน"'
+        : '<b>กำลังบันทึกเส้นทางแบบต่อเนื่อง</b><br>เปิดแอปนี้ค้างไว้ระหว่างเดินทาง ถ้าปิดแท็บหรือล็อกหน้าจอนาน เบราว์เซอร์จะหยุดส่งพิกัด'}</span></div>`),
     el(`<div class="row">
         <div class="stat"><div class="lb">เวลาที่ใช้</div><div class="v" id="a-time">${dur(Date.now() - new Date(t.startAt))}</div></div>
         <div class="stat"><div class="lb">ระยะทาง GPS</div><div class="v"><span id="a-dist">${nf(t.distM / 1000)}</span><small>กม.</small></div></div></div>`),
@@ -1737,7 +1908,7 @@ function viewActive() {
         <button class="btn gh" id="addfuel">⛽ เติมน้ำมัน</button></div>`),
   ];
   if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
-  if (S.watchId == null) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
+  if (!tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
   nodes.push(el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
 
   shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
@@ -1831,7 +2002,11 @@ function viewStopForm() {
         <span id="stmag">🔍</span></div>
       <div class="hint" style="padding:4px 0 0">พิมพ์ชื่อสาขา หรือรหัส (CJX00125 / TH000530 / 125) เพื่อค้นหา
         — ไม่พิมพ์อะไรจะแนะนำสาขาที่ใกล้คุณที่สุดให้</div></div></div>
-    <label class="f"><span>ชื่อสถานที่</span><input id="pl2" placeholder="เลือกสาขาแล้วระบบเติมให้ — หรือพิมพ์เองได้"></label>
+    <label class="f"><span>ชื่อสถานที่</span>
+      <input id="pl2" autocomplete="off"
+             placeholder="พิมพ์คำค้น เช่น กระทุ่ม — ระบบจะแนะนำสถานที่ให้"></label>
+    <div id="plsug"></div>
+    <div id="plfar"></div>
     <label class="f"><span>หมายเหตุ (ไม่บังคับ)</span><textarea id="nt"></textarea></label>
     <button class="btn" id="ok">บันทึกจุดปฏิบัติงาน</button>
   </main>`);
@@ -1864,25 +2039,105 @@ function viewStopForm() {
   };
   $('#stcard').onclick = (e) => {
     if (e.target.id === 'stclr') return;          // ปุ่มล้างมี handler ของตัวเอง
-    pickStore(x => {
-      setStore(x);
-      if (!$('#pl2').value.trim()) $('#pl2').value = x.name;
-    });
+    pickStore(x => afterPick(x));
   };
   $('#stclr').onclick = (e) => {
     e.stopPropagation();
+    // ล้างชื่อสถานที่ที่เติมให้ตอนเลือกสาขาด้วย ไม่งั้นชื่อเก่าค้างอยู่
+    // แล้วบันทึกไปเป็นสาขาหนึ่งแต่ชื่อสถานที่เป็นอีกสาขา
     setStore(null);
-    toast('ล้างสาขาที่เลือกแล้ว');
+    $('#pl2').value = '';
+    setFar(null);
+    $('#plsug').innerHTML = '';
+    toast('ล้างสาขาและชื่อสถานที่แล้ว');
+  };
+
+  /* ระยะสูงสุดจากสถานที่ที่เลือก ไกลกว่านี้ถือว่ายังไปไม่ถึง
+     เจตนาคือกันการกดเพิ่มจุดจากที่อื่นแล้วอ้างว่าไปถึงสาขาแล้ว */
+  const MAX_AWAY_KM = 1;
+  let farKm = null;
+
+  const setFar = (km) => {
+    farKm = km;
+    const box = $('#plfar');
+    if (km == null) { box.innerHTML = ''; }
+    else if (km > MAX_AWAY_KM) {
+      box.innerHTML = `<div class="note e"><span>🛑</span><span>
+        <b>คุณอยู่ห่างจากสถานที่นี้ ${nf(km, 1)} กม.</b><br>
+        เพิ่มจุดปฏิบัติงานได้เมื่อไปถึงสถานที่จริงแล้วเท่านั้น
+        (ต้องอยู่ในระยะ ${MAX_AWAY_KM} กม.)</span></div>`;
+    } else {
+      box.innerHTML = `<div class="note g"><span>✅</span><span>
+        อยู่ห่างจากสถานที่นี้ ${nf(km, 2)} กม. — อยู่ในระยะที่ยืนยันได้</span></div>`;
+    }
+    const blocked = km != null && km > MAX_AWAY_KM;
+    $('#ok').disabled = blocked;
+    $('#ok').textContent = blocked
+      ? 'ยังเพิ่มจุดไม่ได้ — ไปให้ถึงสถานที่ก่อน'
+      : 'บันทึกจุดปฏิบัติงาน';
+  };
+
+  const kmFromHere = (lat, lng) => {
+    const c = pos?.coords || S.lastPos?.coords;
+    if (!c || lat == null || lng == null) return null;
+    return haversineM(c.latitude, c.longitude, lat, lng) / 1000;
+  };
+
+  // เลือกสาขาจากลิสต์ = ตรวจระยะทันที
+  const afterPick = (x) => {
+    setStore(x);
+    $('#pl2').value = x.name;
+    $('#plsug').innerHTML = '';
+    setFar(kmFromHere(x.lat, x.lng));
+  };
+
+  // พิมพ์ในช่องชื่อสถานที่แล้วแนะนำสาขาที่ตรงกับคำค้น
+  $('#pl2').oninput = () => {
+    const q = $('#pl2').value.trim().toLowerCase();
+    setFar(null);                       // พิมพ์เองถือว่ายังไม่ได้ยืนยันสถานที่
+    if (q.length < 2) { $('#plsug').innerHTML = ''; return; }
+    const hit = (S.master.stores || []).filter(x =>
+      String(x.name || '').toLowerCase().includes(q) ||
+      String(x.code || '').toLowerCase().includes(q) ||
+      String(x.legacy_code || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!hit.length) { $('#plsug').innerHTML = ''; return; }
+    $('#plsug').innerHTML = `<div class="list" style="margin:-4px 0 10px">${
+      hit.map(x => {
+        const km = kmFromHere(x.lat, x.lng);
+        return `<div class="item" data-pick="${esc(x.code)}" style="cursor:pointer">
+          <div class="tx"><div class="h mono" style="font-size:13px">${esc(x.code)} : ${esc(x.name)}</div>
+          <div class="s">${km == null ? 'ไม่มีพิกัดสาขานี้ในระบบ'
+            : (km > MAX_AWAY_KM ? '<b style="color:var(--r)">ห่าง ' + nf(km, 1) + ' กม.</b>'
+                                : 'ห่าง ' + nf(km, 2) + ' กม.')}</div></div></div>`;
+      }).join('')}</div>`;
+    $('#plsug').querySelectorAll('[data-pick]').forEach(node => node.onclick = () => {
+      const x = (S.master.stores || []).find(y => y.code === node.dataset.pick);
+      if (x) afterPick(x);
+    });
   };
 
   $('#ok').onclick = async (e) => {
     const j = jts.find(x => x.code === $('#jt').value);
     if (!j) return toast('เลือกประเภทงาน', 1);
+    if (farKm != null && farKm > MAX_AWAY_KM)
+      return toast('คุณอยู่ห่างจากสถานที่ ' + nf(farKm, 1)
+        + ' กม. — ไปให้ถึงสถานที่ก่อนแล้วค่อยกดเพิ่มจุด', 1, 8000);
     if (j.requires_note && $('#jn').value.trim().length < 3) return toast('ประเภทงาน "อื่นๆ" ต้องพิมพ์เหตุผล', 1);
     if (j.needs_store && !store) return toast('งานประเภทนี้ต้องเลือกสาขา', 1);
     if (!pos) return toast('ยังจับพิกัดไม่ได้ รอสักครู่แล้วลองใหม่', 1);
     e.target.disabled = true;
     const t = S.trip;
+
+    // เพิ่มจุดใหม่ = ออกจากจุดก่อนหน้าแล้ว ปิดให้อัตโนมัติที่พิกัดของจุดนั้นเอง
+    // (ไม่ใช่พิกัดปัจจุบัน เพราะตอนออกจากจุดนั้นคนยังอยู่ที่จุดนั้น)
+    const prev = [...t.stops].reverse().find(x => !x.depart_at);
+    if (prev) {
+      prev.depart_at = new Date().toISOString();
+      prev.depart_lat = prev.arrive_lat;
+      prev.depart_lng = prev.arrive_lng;
+      prev._dirty = 1;
+    }
+
     t.stops.push({ id: uuid(), session_id: t.id, seq: t.stops.length + 1,
       job_type_code: j.code, job_note: $('#jn').value.trim() || null,
       store_code: store?.code || null, store_name: store?.name || null,
@@ -1890,7 +2145,9 @@ function viewStopForm() {
       arrive_at: new Date().toISOString(),
       arrive_lat: pos.coords.latitude, arrive_lng: pos.coords.longitude,
       note: $('#nt').value.trim() || null, source: 'manual', _dirty: 1 });
-    saveTrip(); sync(); toast('บันทึกจุดปฏิบัติงานแล้ว'); go('active');
+    saveTrip(); sync();
+    toast(prev ? 'บันทึกจุดใหม่ และปิดจุดก่อนหน้าให้แล้ว' : 'บันทึกจุดปฏิบัติงานแล้ว');
+    go('active');
   };
 }
 
@@ -2055,7 +2312,7 @@ function viewTripEnd() {
       ${photoField('ep', 'ยังไม่ได้ถ่ายรูปเลขไมล์ปลายทาง')}
       <label class="f big" style="margin-top:11px"><span>เลขไมล์ปลายทาง (กม.)</span>
         <input id="odo" inputmode="numeric" maxlength="7"></label>
-      <div class="hint" id="eh">AI จะเติมให้จากรูป — แก้ได้ถ้าอ่านผิด</div>
+      <div class="hint" id="eh">AI จะเติมให้จากรูป — เลขที่กรอกต้องตรงกับรูป</div>
       <div id="warn"></div></div>
     <label class="f"><span>หมายเหตุปิดงาน (ไม่บังคับ)</span>
       <textarea id="nt" placeholder="เช่น สัญญาณหลุดช่วงเข้าเขาชะงุ้ม"></textarea></label>
@@ -2071,20 +2328,36 @@ function viewTripEnd() {
   const checkOdo = () => {
     const e2 = parseInt($('#odo').value.replace(/\D/g, ''), 10);
     const w = $('#warn'); w.innerHTML = '';
+
+    // เลขที่พิมพ์ต้องตรงกับรูป — กฎเดียวกับตอนเริ่มงาน
+    // ปลายทางคือจุดที่อ้างระยะทางเพื่อเบิกเงิน จึงต้องคุมเข้มเท่ากัน
+    const mis = e2 ? odoMismatch(e2, ocr?.odometer_km ?? null) : null;
+    $('#ok').disabled = !!mis;
+    if (mis) {
+      w.innerHTML = `<div class="note e" style="margin-top:9px"><span>⛔</span><span>${esc(mis)}</span></div>`;
+      return;
+    }
     if (!e2 || !t.odo_start) return;
     if (e2 < t.odo_start) { w.append(el(`<div class="note e" style="margin-top:9px"><span>⛔</span><span>
       เลขไมล์ปลายทาง (${ni(e2)}) น้อยกว่าต้นทาง (${ni(t.odo_start)}) — ตรวจสอบรูปอีกครั้ง</span></div>`)); return; }
     const odoKm = e2 - t.odo_start, gps = t.distM / 1000;
     if (gps < 1) return;
     const gap = Math.abs(odoKm - gps) / gps;
-    if (gap > .15) w.append(el(`<div class="note e" style="margin-top:9px"><span>🚩</span><span>
-      ระยะจากเลขไมล์ ${ni(odoKm)} กม. ต่างจากระยะ GPS ${nf(gps)} กม. (${Math.round(gap * 100)}%) —
+    if (gap > CFG.odoGapWarnPct) w.append(el(`<div class="note e" style="margin-top:9px"><span>🚩</span><span>
+      ระยะจากเลขไมล์ ${ni(odoKm)} กม. ต่างจากระยะ GPS ${nf(gps)} กม. (${Math.round(gap * 100)}%)
+      เกินเกณฑ์ ${Math.round(CFG.odoGapWarnPct * 100)}% —
       ระบบจะบันทึกทั้งสองค่า ติดธงไว้ และ<b>แจ้งหัวหน้างานอัตโนมัติ</b></span></div>`));
   };
   $('#odo').oninput = checkOdo;
 
   $('#ep').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
+    const stale = freshPhotoProblem(f);
+    if (stale) {
+      e.target.value = '';
+      $('#eh').innerHTML = `<b style="color:var(--r)">${esc(stale)}</b>`;
+      return toast(stale, 1, 8000);
+    }
     photo = f; photoOk = false; ocr = null;
     $('#epph').outerHTML = `<img class="thumb" id="epph" alt="เลขไมล์ปลายทาง" src="${URL.createObjectURL(f)}">`;
     $('#eh').textContent = 'กำลังให้ AI อ่านเลขไมล์…';
@@ -2095,7 +2368,7 @@ function viewTripEnd() {
       photoOk = true;
       $('#odo').value = r.data.odometer_km;
       $('#eh').innerHTML = `AI อ่านได้ <b>${r.data.odometer_km}</b> · ความมั่นใจ ${
-        r.data.confidence || '-'} — แก้ได้ถ้าอ่านผิด`;
+        r.data.confidence || '-'} — ถ้าอ่านผิดให้ถ่ายรูปใหม่ ไม่ใช่แก้ตัวเลข`;
       checkOdo();
     } else if (r.status === 'unreadable') {
       $('#odo').value = ''; $('#warn').innerHTML = '';
@@ -2114,10 +2387,30 @@ function viewTripEnd() {
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ปลายทาง', 1);
     if (t.odo_start && odo < t.odo_start) return toast('เลขไมล์ปลายทางน้อยกว่าต้นทาง', 1);
+    const misEnd = odoMismatch(odo, ocr?.odometer_km ?? null);
+    if (misEnd) return toast(misEnd, 1, 8000);
     const open = t.stops.filter(s => !s.job_type_code).length;
-    const msg = 'ปิดแล้วจะแก้ไขข้อมูลทริปนี้ไม่ได้อีก\n\nระยะทาง GPS: ' + nf(t.distM / 1000) + ' กม.'
-      + (t.odo_start ? '\nระยะจากเลขไมล์: ' + ni(odo - t.odo_start) + ' กม.' : '')
-      + (open ? '\n\nยังมีจุดที่แวะ ' + open + ' จุดที่ยังไม่ได้ระบุ' : '');
+
+    // ระยะต่างเกินเกณฑ์ = ต้องยืนยันแยกอีกชั้น ไม่ให้กดผ่านไปโดยไม่ทันอ่าน
+    const gpsKm = t.distM / 1000;
+    const odoKm = t.odo_start ? odo - t.odo_start : null;
+    const gap = (odoKm != null && gpsKm > 1) ? Math.abs(odoKm - gpsKm) / gpsKm : null;
+    if (gap != null && gap > CFG.odoGapWarnPct) {
+      const ok = await askConfirm('ระยะทางไม่ตรงกัน',
+        'ระยะจากเลขไมล์ ' + ni(odoKm) + ' กม.\n'
+        + 'ระยะที่ GPS บันทึกได้ ' + nf(gpsKm) + ' กม.\n'
+        + 'ต่างกัน ' + Math.round(gap * 100) + '% (เกณฑ์ที่ยอมรับได้ '
+        + Math.round(CFG.odoGapWarnPct * 100) + '%)\n\n'
+        + 'ระบบจะบันทึกทั้งสองค่าและรายงานหัวหน้างานให้ตรวจสอบ\n'
+        + 'ถ้ามีเหตุผล เช่น สัญญาณ GPS หลุดระหว่างทาง ให้เขียนไว้ในหมายเหตุปิดงาน',
+        'รับทราบ และปิดงาน', true);
+      if (!ok) return;
+    }
+
+    const msg = 'ปิดแล้วจะแก้ไขข้อมูลทริปนี้ไม่ได้อีก\n\nระยะทาง GPS: ' + nf(gpsKm) + ' กม.'
+      + (odoKm != null ? '\nระยะจากเลขไมล์: ' + ni(odoKm) + ' กม.' : '')
+      + (open ? '\n\nยังมีจุดที่แวะ ' + open + ' จุดที่ยังไม่ได้ระบุ' : '')
+      + '\n\nระบบจะแจ้งหัวหน้างานว่าคุณปิดงานแล้ว';
     if (!await askConfirm('ยืนยันสิ้นสุดการทำงาน?', msg, 'ปิดงาน', true)) return;
     e.target.disabled = true; e.target.textContent = 'กำลังปิดงาน…';
 
@@ -2161,10 +2454,18 @@ function viewSummary(t, justDone) {
     <div class="stat"><div class="lb">น้ำมัน</div><div class="v">${nf(liters, 2)}<small>ลิตร</small></div></div></div>`));
   if (baht) nodes.push(el(`<div class="stat"><div class="lb">ค่าน้ำมันในทริปนี้</div><div class="v">${nf(baht, 2)}<small>บาท</small></div></div>`));
 
+  const blind = splitByGaps(t.points || []);
+  const blindMin = Math.round(blind.blindSec / 60);
   const mapCard = el(`<div class="card"><h3>เส้นทางการเดินทาง</h3>
-    <div class="sub">${(t.points || []).length} จุดพิกัด</div>
-    <canvas class="route" id="rt"></canvas>
-    <div class="lb" style="margin-top:6px">🟢 เริ่มงาน · 🔴 สิ้นสุด · 🟡 จุดที่แวะ${
+    <div class="sub">${(t.points || []).length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
+    <div class="map" id="lmap"></div>
+    ${blindMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
+      <b>ช่วงที่ไม่ได้รับสัญญาณรวม ${blindMin} นาที</b> (${blind.gaps.length} ช่วง)
+      — เส้นประบนแผนที่คือเส้นตรงระหว่างสองจุด ไม่ใช่เส้นทางจริง
+      ระยะทางช่วงนั้นไม่ถูกนับ<br>
+      สาเหตุที่พบบ่อยคือสลับไปแอปอื่นหรือล็อกหน้าจอระหว่างเดินทาง</span></div>` : ''}
+    <canvas class="route hide" id="rt"></canvas>
+    <div class="lb" style="margin-top:6px">🟢 เริ่มงาน · 🔴 สิ้นสุด · 🔵 จุดปฏิบัติงาน · ⚪ สัญญาณขาด${
       t._pruned ? '<br>ภาพนี้ลดจุดลงเพื่อวาดให้เร็ว — เส้นทางเต็มอยู่บนระบบ' : ''}</div></div>`);
   nodes.push(mapCard);
 
@@ -2179,7 +2480,99 @@ function viewSummary(t, justDone) {
   nodes.push(el('<button class="btn" id="hm">กลับหน้าหลัก</button>'));
   shell(justDone ? 'ปิดงานเรียบร้อย' : 'สรุปทริป', nodes, { back: justDone ? false : () => go('history'), tabs: false, actions: false });
   $('#hm').onclick = () => go('home');
-  drawRoute($('#rt'), t);
+  const pts = (t.points || []).filter(p => p.lat && p.lng).map(p => [p.lat, p.lng]);
+  if (!renderMap($('#lmap'), pts, t.stops)) {
+    // ออฟไลน์หรือโหลดแผนที่ไม่ได้ — ยังต้องเห็นเส้นทางคร่าว ๆ
+    $('#lmap').classList.add('hide');
+    $('#rt').classList.remove('hide');
+    drawRoute($('#rt'), t);
+  }
+}
+
+/* วาดเส้นทางบนแผนที่จริง ซูมเข้าออก ลากดูได้เหมือนแอปแผนที่ทั่วไป
+   pts = [[lat,lng], ...]  ·  stops = [{arrive_lat, arrive_lng, seq, ...}]
+   คืน true ถ้าวาดได้ / false ถ้า Leaflet ยังไม่พร้อม (ให้ผู้เรียกถอยไป canvas) */
+/* แยกเส้นทางเป็นช่วง ๆ ตามเวลาที่ขาดหาย
+   รับได้ทั้ง [lat,lng] (ไม่มีเวลา) และ {lat,lng,at} / [lat,lng,epoch]
+   คืน { segs: [[[la,ln],...], ...], blindSec, gaps: [{from,to,sec}] } */
+function splitByGaps(raw) {
+  const pts = (raw || []).map(p => Array.isArray(p)
+    ? { ll: [p[0], p[1]], t: p[2] != null ? Number(p[2]) : null }
+    : { ll: [p.lat, p.lng], t: p.at ? new Date(p.at).getTime() : null })
+    .filter(p => p.ll[0] != null && p.ll[1] != null);
+
+  const segs = [], gaps = [];
+  let cur = [], blindSec = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], prev = pts[i - 1];
+    const gapSec = (prev && p.t && prev.t) ? (p.t - prev.t) / 1000 : 0;
+    if (gapSec > CFG.gpsBlindGapSec) {
+      if (cur.length) segs.push(cur);
+      gaps.push({ from: prev.ll, to: p.ll, sec: gapSec });
+      blindSec += gapSec;
+      cur = [];
+    }
+    cur.push(p.ll);
+  }
+  if (cur.length) segs.push(cur);
+  return { segs, gaps, blindSec, all: pts.map(p => p.ll) };
+}
+
+function renderMap(box, pts, stops) {
+  if (!box || typeof L === 'undefined' || !pts || pts.length < 2) return false;
+  try {
+    const map = L.map(box, { zoomControl: true, attributionControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(map);
+
+    const { segs, gaps, all } = splitByGaps(pts);
+
+    // ช่วงที่บันทึกได้จริง = เส้นทึบสีแดง
+    segs.filter(sg => sg.length > 1).forEach(sg =>
+      L.polyline(sg, { color: '#E30613', weight: 5, opacity: .85 }).addTo(map));
+
+    // ช่วงที่ขาดสัญญาณ = เส้นประสีเทา บอกให้รู้ว่าระบบไม่รู้ว่าไปทางไหน
+    gaps.forEach(g => {
+      L.polyline([g.from, g.to], {
+        color: '#8A94A1', weight: 4, opacity: .8, dashArray: '6 9',
+      }).addTo(map).bindPopup(
+        '<b>ไม่ได้รับสัญญาณ ' + Math.round(g.sec / 60) + ' นาที</b><br>'
+        + 'ระบบไม่รู้ว่าเดินทางเส้นทางไหนในช่วงนี้<br>เส้นประคือเส้นตรงระหว่างสองจุด');
+      L.circleMarker(g.from, {
+        radius: 6, color: '#fff', weight: 2, fillColor: '#8A94A1', fillOpacity: 1,
+      }).addTo(map).bindPopup('สัญญาณขาดตรงนี้');
+    });
+
+    const line = L.polyline(all, { opacity: 0 }).addTo(map);
+    map.fitBounds(line.getBounds(), { padding: [26, 26] });
+
+    const pin = (ll, color, label) => L.circleMarker(ll, {
+      radius: 8, color: '#fff', weight: 3, fillColor: color, fillOpacity: 1,
+    }).addTo(map).bindPopup(label);
+
+    pin(all[0], '#00A651', 'เริ่มปฏิบัติงาน');
+    pin(all[all.length - 1], '#C00510', 'สิ้นสุดการทำงาน');
+
+    (stops || []).forEach(st => {
+      const la = st.arrive_lat, ln = st.arrive_lng;
+      if (la == null || ln == null) return;
+      L.circleMarker([la, ln], {
+        radius: 7, color: '#fff', weight: 2.5,
+        fillColor: st.job_type_code ? '#1B3A93' : '#C9A227', fillOpacity: 1,
+      }).addTo(map).bindPopup(
+        `<b>จุดที่ ${st.seq || '?'}</b><br>${esc(st.job_name || st.job_type_code || 'ยังไม่ระบุประเภทงาน')}`
+        + (st.place_label ? '<br>' + esc(st.place_label) : ''));
+    });
+
+    // เปิดจากในการ์ดที่เพิ่งถูกเพิ่มเข้า DOM ขนาดยังไม่นิ่ง ต้องบอกให้วัดใหม่
+    setTimeout(() => map.invalidateSize(), 120);
+    return true;
+  } catch (e) {
+    console.warn('map', e?.message);
+    return false;
+  }
 }
 
 function drawRoute(cv, t) {
@@ -2214,6 +2607,93 @@ function drawRoute(cv, t) {
     dot(X(s.arrive_lng), Y(s.arrive_lat), s.job_type_code ? '#fff' : '#C9A227', 5); });
   dot(X(pts[0].lng), Y(pts[0].lat), '#00A651');
   dot(X(pts[pts.length - 1].lng), Y(pts[pts.length - 1].lat), '#C00510');
+}
+
+/* หัวหน้า (หรือเจ้าตัว/Admin) เปิดดูรายละเอียดทริปจากกล่องแจ้งเตือน
+   ตรวจสิทธิ์ที่ฝั่งฐานข้อมูลใน session_detail() ไม่ใช่ที่หน้าจอ */
+async function viewSessionDetail(sessionId) {
+  loading('กำลังโหลดรายละเอียดการเดินทาง…');
+  let d = null;
+  try {
+    const { data } = await sb.rpc('session_detail', { p_session_id: sessionId });
+    d = data;
+  } catch (e) {
+    return shell('รายละเอียดการเดินทาง',
+      [el(`<div class="note e"><span>⚠</span><span>โหลดไม่ได้: ${esc(String(e?.message || e))}
+        <br>ยังไม่ได้รัน sql/23_trip_alerts.sql หรือเปล่า</span></div>`)],
+      { back: () => go('alerts') });
+  }
+  if (d?.ok !== true) {
+    return shell('รายละเอียดการเดินทาง', [el(`<div class="note e"><span>🔒</span><span>${
+      d?.code === 'NOT_ALLOWED' ? 'คุณไม่มีสิทธิ์ดูทริปนี้' : 'ไม่พบทริปนี้'}</span></div>`)],
+      { back: () => go('alerts') });
+  }
+
+  const w = d.session || {}, own = d.owner || {};
+  const gpsKm = (w.gps_distance_m || 0) / 1000;
+  const odoKm = (w.odo_end && w.odo_start) ? w.odo_end - w.odo_start : null;
+  const gap = (odoKm != null && gpsKm > 1) ? Math.abs(odoKm - gpsKm) / gpsKm : null;
+  const pts = (d.points || []).filter(p => Array.isArray(p) && p.length === 2);
+
+  const nodes = [
+    el(`<div class="card"><h3>${esc(own.full_name || '—')}</h3>
+      <div class="lb mono">${esc(own.employee_code || '')}</div>
+      <div class="lb" style="margin-top:6px">${w.start_at ? thDT(new Date(w.start_at)) : ''}
+        ${w.end_at ? ' → ' + thTime(new Date(w.end_at)) : ''}</div></div>`),
+
+    el(`<div class="row">
+      <div class="stat"><div class="lb">ระยะ GPS</div><div class="v">${nf(gpsKm)}<small>กม.</small></div></div>
+      <div class="stat"><div class="lb">ระยะจากเลขไมล์</div><div class="v">${
+        odoKm != null ? ni(odoKm) : '—'}<small>กม.</small></div></div></div>`),
+  ];
+
+  if (gap != null && gap > CFG.odoGapWarnPct) {
+    nodes.push(el(`<div class="note e"><span>🚩</span><span>
+      <b>ระยะทางต่างกัน ${Math.round(gap * 100)}%</b> เกินเกณฑ์ ${
+      Math.round(CFG.odoGapWarnPct * 100)}% — เลขไมล์ ${ni(w.odo_start)} → ${ni(w.odo_end)}
+      ${w.note ? '<br>หมายเหตุจากพนักงาน: ' + esc(w.note) : '<br>พนักงานไม่ได้ระบุหมายเหตุ'}</span></div>`));
+  } else if (w.note) {
+    nodes.push(el(`<div class="note i"><span>📝</span><span>${esc(w.note)}</span></div>`));
+  }
+  if (w.auto_closed) {
+    nodes.push(el(`<div class="note w"><span>🌙</span><span>
+      ทริปนี้ระบบปิดให้อัตโนมัติ พนักงานไม่ได้กดปิดเอง</span></div>`));
+  }
+
+  const bl = splitByGaps(pts);
+  const blMin = Math.round(bl.blindSec / 60);
+  nodes.push(el(`<div class="card"><h3>เส้นทางการเดินทาง</h3>
+    <div class="sub">${pts.length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
+    <div class="map" id="dmap"></div>
+    ${blMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
+      <b>ช่วงที่ไม่ได้รับสัญญาณรวม ${blMin} นาที</b> (${bl.gaps.length} ช่วง)
+      — เส้นประคือเส้นตรงระหว่างสองจุด ไม่ใช่เส้นทางจริง
+      ระยะ GPS ที่เห็นจึงต่ำกว่าระยะที่วิ่งจริงในช่วงนั้น</span></div>` : ''}
+    </div>`));
+
+  nodes.push(el(`<div class="card"><h3>จุดปฏิบัติงาน ${(d.stops || []).length} จุด</h3>
+    <div class="list">${(d.stops || []).map(st => `<div class="item">
+      <div class="n ${st.job_type_code ? '' : 'q'}">${st.seq || '?'}</div>
+      <div class="tx"><div class="h">${esc(st.job_name || st.job_type_code || 'ยังไม่ระบุประเภทงาน')}</div>
+        <div class="s">${st.store_code ? esc(st.store_code) + ' · ' : ''}${esc(st.place_label || '')}<br>
+          เข้า ${st.arrive_at ? thTime(new Date(st.arrive_at)) : '-'}${
+          st.depart_at ? ' → ออก ' + thTime(new Date(st.depart_at)) : ' (ยังไม่ได้ปิดจุด)'}
+          ${st.note ? '<br>' + esc(st.note) : ''}</div></div></div>`).join('')
+      || '<div class="lb">ไม่มีจุดปฏิบัติงานในทริปนี้</div>'}</div></div>`));
+
+  if ((d.fuels || []).length) {
+    nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${
+      d.fuels.map(f => `<div class="item"><div class="tx">
+        <div class="h">${nf(f.liters, 2)} ลิตร${f.amount_thb ? ' · ' + nf(f.amount_thb, 2) + ' บาท' : ''}</div>
+        <div class="s">${f.filled_at ? thDT(new Date(f.filled_at)) : ''}${
+          f.station_name ? ' · ' + esc(f.station_name) : ''}</div></div></div>`).join('')}</div></div>`));
+  }
+
+  shell('รายละเอียดการเดินทาง', nodes, { back: () => go('alerts') });
+  if (!renderMap($('#dmap'), pts, d.stops)) {
+    $('#dmap').innerHTML = '<div class="lb" style="padding:14px;text-align:center">'
+      + 'แสดงแผนที่ไม่ได้ตอนนี้ — ต้องมีสัญญาณอินเทอร์เน็ต</div>';
+  }
 }
 
 /* ==================================================================== */
@@ -2260,7 +2740,7 @@ async function viewAlerts() {
   const { data } = await sb.from('alerts').select('*')
     .eq('to_user', S.profile.id).order('created_at', { ascending: false }).limit(60);
   const rows = data || [];
-  const ic = k => ({ not_closed_2200: '🌙', odo_anomaly: '🧭', off_route_stop: '📍',
+  const ic = k => ({ session_closed: '🏁', not_closed_2200: '🌙', odo_anomaly: '🧭', off_route_stop: '📍',
     quota_near: '⛽', quota_exceeded: '⛽', vehicle_expiring: '📅',
     change_request: '📝', change_decided: '✅' }[k] || '🔔');
   const nodes = rows.length ? rows.map(a => el(`<div class="card" data-a="${esc(a.id)}"
@@ -2271,12 +2751,18 @@ async function viewAlerts() {
           <div style="display:flex"><span class="pill ${a.severity === 'critical' ? 'e' : a.severity === 'warn' ? 'w' : 'b'}">${esc(a.kind)}</span>
             <span class="sp"></span><span class="lb">${thDT(new Date(a.created_at))}</span></div>
           <div class="vl" style="margin-top:5px">${esc(a.title)}</div>
-          ${a.body ? `<div class="lb" style="white-space:pre-line">${esc(a.body)}</div>` : ''}</div>
+          ${a.body ? `<div class="lb" style="white-space:pre-line">${esc(a.body)}</div>` : ''}
+          ${a.session_id ? `<button class="link" data-sd="${esc(a.session_id)}"
+              style="padding:6px 0 0">ดูรายละเอียดการเดินทาง ›</button>` : ''}</div>
         ${a.read_at ? '' : '<span style="width:9px;height:9px;border-radius:50%;background:var(--r);flex:none;margin-top:5px"></span>'}
       </div></div>`))
     : [el('<div class="note i"><span>🔔</span><span>ยังไม่มีการแจ้งเตือน</span></div>')];
   nodes.unshift(el('<button class="btn gh" id="rall">ทำเครื่องหมายว่าอ่านทั้งหมด</button>'));
   shell('กล่องแจ้งเตือน', nodes, { tabs: true });
+  document.querySelectorAll('[data-sd]').forEach(b => b.onclick = (ev) => {
+    ev.stopPropagation();
+    viewSessionDetail(b.dataset.sd);
+  });
   $('#rall').onclick = async () => {
     await sb.from('alerts').update({ read_at: new Date().toISOString() })
       .eq('to_user', S.profile.id).is('read_at', null);
@@ -2510,6 +2996,267 @@ async function loadResetQueue() {
   });
 }
 
+/* ====================================================================
+   จัดการบัญชีผู้ใช้ — เฉพาะ Admin
+   --------------------------------------------------------------------
+   การสร้างบัญชีจริงเกิดที่ Edge Function issue-pin เท่านั้น เพราะต้องใช้
+   secret key ซึ่งข้ามกฎ RLS ได้ทั้งหมด จึงห้ามอยู่ในเว็บเด็ดขาด
+   หน้านี้แค่บอกว่าจะสร้างให้ใคร แล้วรับ PIN กลับมาแสดงครั้งเดียว
+   ==================================================================== */
+const U = { rows: [], q: '', filter: 'all', results: [] };
+
+async function viewUsers() {
+  if (!['admin', 'superadmin'].includes(S.profile?.role)) {
+    shell('จัดการบัญชีผู้ใช้',
+      [el('<div class="note w"><span>🔒</span><span>บัญชีนี้ไม่มีสิทธิ์ Admin</span></div>')],
+      { back: true });
+    return;
+  }
+
+  shell('จัดการบัญชีผู้ใช้', [
+    el(`<div class="card"><h3>สร้างบัญชีทีละคน</h3>
+      <div class="sub">รหัสพนักงานต้องมีอยู่ในไฟล์ HR ก่อน ระบบจะสร้างบัญชี
+        แล้วออก PIN ให้ครั้งเดียว</div>
+      <label class="f code"><span>รหัสพนักงาน</span>
+        <input id="uc" autocapitalize="characters" placeholder="80xxxxxx / CMTxxxxxxx"></label>
+      <button class="btn" id="ucreate" style="margin-top:10px">สร้างบัญชี + ออก PIN</button>
+      <div id="ures"></div></div>`),
+
+    el(`<div class="card"><h3>สร้างทีละหลายคน</h3>
+      <div class="sub">ดึงรายชื่อที่ยังไม่มีบัญชีมาสร้างรวดเดียว —
+        PIN หมดอายุ 7 วัน อย่าสร้างเกินกว่าที่แจกไหวในสัปดาห์นี้</div>
+      <div class="row">
+        <label class="f"><span>Cost center (เว้นว่าง = ทุกหน่วย)</span>
+          <input id="bcc" placeholder="เช่น 10101"></label>
+        <label class="f"><span>ครั้งละกี่คน</span>
+          <input id="blim" type="number" value="20" min="1" max="200"></label>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;margin:10px 0">
+        <input type="checkbox" id="bfield" checked style="width:18px;height:18px">
+        <span>เฉพาะพนักงานภาคสนาม</span></label>
+      <button class="btn gh" id="bfind">🔍 ดูว่ามีใครยังไม่มีบัญชีบ้าง</button>
+      <div id="bres"></div></div>`),
+
+    el(`<div class="card"><h3>บัญชีทั้งหมด</h3>
+      <label class="f"><span>ค้นหา ชื่อ / รหัสพนักงาน</span>
+        <input id="usearch" placeholder="พิมพ์เพื่อค้นหา"></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0" id="ufilters">
+        <button class="btn gh" style="width:auto;padding:6px 11px" data-f="all">ทั้งหมด</button>
+        <button class="btn gh" style="width:auto;padding:6px 11px" data-f="none">ยังไม่มีบัญชี</button>
+        <button class="btn gh" style="width:auto;padding:6px 11px" data-f="admin">แอดมิน</button>
+        <button class="btn gh" style="width:auto;padding:6px 11px" data-f="off">ปิดใช้งาน</button>
+      </div>
+      <div id="ulist"><div class="lb">กำลังโหลด…</div></div></div>`),
+  ], { back: true, tabs: true, actions: false });
+
+  $('#ucreate').onclick = () => createOne($('#uc').value, '#ures');
+  $('#bfind').onclick = findPending;
+  $('#usearch').oninput = (e) => { U.q = e.target.value.trim(); renderUserList(); };
+  $('#ufilters').querySelectorAll('button').forEach(b => b.onclick = () => {
+    U.filter = b.dataset.f; renderUserList();
+  });
+
+  loadUserList();
+}
+
+async function loadUserList() {
+  try {
+    const { data } = await sb.from('v_user_accounts')
+      .select('*').order('employee_code').limit(3000);
+    U.rows = data || [];
+  } catch (e) {
+    U.rows = [];
+    if ($('#ulist')) $('#ulist').innerHTML =
+      `<div class="note e"><span>⚠</span><span>โหลดรายชื่อไม่ได้ — `
+      + `ยังไม่ได้รัน sql/22_user_admin.sql หรือเปล่า (${esc(String(e?.message || e))})</span></div>`;
+    return;
+  }
+  renderUserList();
+}
+
+function renderUserList() {
+  const box = $('#ulist');
+  if (!box) return;
+  const q = U.q.toLowerCase();
+  let rows = U.rows.filter(r =>
+    !q || String(r.employee_code).toLowerCase().includes(q)
+       || String(r.full_name || '').toLowerCase().includes(q));
+
+  if (U.filter === 'none')  rows = rows.filter(r => !r.has_account);
+  if (U.filter === 'admin') rows = rows.filter(r => ['admin', 'superadmin'].includes(r.role));
+  if (U.filter === 'off')   rows = rows.filter(r => r.has_account && !r.active);
+
+  const total = rows.length;
+  rows = rows.slice(0, 120);   // แสดงไม่เกินนี้ ไม่งั้นหน้าค้างตอนมี 2,476 คน
+
+  box.innerHTML = `<div class="lb" style="margin-bottom:8px">แสดง ${rows.length} จาก ${total} รายการ`
+    + (total > rows.length ? ' — พิมพ์ค้นหาเพื่อแคบลง' : '') + '</div>'
+    + (rows.length ? rows.map(r => `<div class="item" style="align-items:flex-start">
+      <div class="tx" style="flex:1">
+        <div class="h">${esc(r.full_name || '—')}</div>
+        <div class="s mono">${esc(r.employee_code)}${r.cost_center_code ? ' · ' + esc(r.cost_center_code) : ''}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+          <span class="pill ${r.has_account ? (r.active ? 'g' : 'e') : 'w'}">${esc(r['สถานะ'] || '')}</span>
+          ${['admin','superadmin'].includes(r.role) ? `<span class="pill b">${esc(r.role)}</span>` : ''}
+          ${r.has_active_pin ? '<span class="pill w">มี PIN ยังไม่ได้ใช้</span>' : ''}
+          ${r.device_label ? `<span class="pill">${esc(r.device_label)}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          ${!r.has_account
+            ? `<button class="btn" style="width:auto;padding:6px 11px" data-mk="${esc(r.employee_code)}">สร้างบัญชี + ออก PIN</button>`
+            : `<button class="btn gh" style="width:auto;padding:6px 11px" data-mk="${esc(r.employee_code)}">ออก PIN ใบใหม่</button>`}
+          ${r.has_account ? `
+            <button class="link" data-role="${esc(r.employee_code)}"
+              data-to="${['admin','superadmin'].includes(r.role) ? 'user' : 'admin'}">${
+              ['admin','superadmin'].includes(r.role) ? 'ถอดสิทธิ์ Admin' : 'ตั้งเป็น Admin'}</button>
+            <button class="link" data-act="${esc(r.employee_code)}"
+              data-on="${r.active ? '0' : '1'}">${r.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
+            ${r.device_label ? `<button class="link" data-ub="${esc(r.employee_code)}">ปลดล็อกอุปกรณ์</button>` : ''}
+          ` : ''}
+        </div>
+        <div id="r-${esc(r.employee_code)}"></div>
+      </div></div>`).join('')
+      : '<div class="lb">ไม่พบรายการที่ตรงกับที่ค้นหา</div>');
+
+  box.querySelectorAll('[data-mk]').forEach(b => b.onclick =
+    () => createOne(b.dataset.mk, '#r-' + b.dataset.mk));
+
+  box.querySelectorAll('[data-role]').forEach(b => b.onclick = async () => {
+    const to = b.dataset.to;
+    if (!await askConfirm(to === 'admin' ? 'ตั้งเป็น Admin' : 'ถอดสิทธิ์ Admin',
+        `${b.dataset.role} จะ${to === 'admin' ? 'เข้าถึงเครื่องมือ Admin ได้ทั้งหมด'
+          : 'ใช้งานเป็นพนักงานทั่วไป'}`, 'ยืนยัน', to !== 'admin')) return;
+    const { data } = await sb.rpc('admin_set_role',
+      { p_employee_code: b.dataset.role, p_role: to });
+    if (data?.ok !== true) return toast(roleErr(data?.code), 1, 7000);
+    toast('เปลี่ยนสิทธิ์เรียบร้อย'); loadUserList();
+  });
+
+  box.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+    const on = b.dataset.on === '1';
+    if (!await askConfirm(on ? 'เปิดใช้งานบัญชี' : 'ปิดใช้งานบัญชี',
+        on ? `${b.dataset.act} จะกลับมาเข้าระบบได้`
+           : `${b.dataset.act} จะเข้าระบบไม่ได้ทันที ข้อมูลย้อนหลังยังอยู่ครบ`,
+        'ยืนยัน', !on)) return;
+    const { data } = await sb.rpc('admin_set_active',
+      { p_employee_code: b.dataset.act, p_active: on });
+    if (data?.ok !== true) return toast(roleErr(data?.code), 1, 7000);
+    toast(on ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว'); loadUserList();
+  });
+
+  box.querySelectorAll('[data-ub]').forEach(b => b.onclick = async () => {
+    if (!await askConfirm('ปลดล็อกอุปกรณ์',
+        `เครื่องถัดไปที่ ${b.dataset.ub} เข้าสำเร็จจะกลายเป็นเครื่องที่ผูกไว้`,
+        'ปลดล็อก')) return;
+    await sb.rpc('admin_unbind_device', { p_employee_code: b.dataset.ub });
+    toast('ปลดล็อกแล้ว'); loadUserList();
+  });
+}
+
+function roleErr(code) {
+  return ({
+    NOT_ADMIN: 'บัญชีนี้ไม่มีสิทธิ์ Admin',
+    BAD_ROLE: 'ระดับสิทธิ์ไม่ถูกต้อง',
+    NEED_SUPERADMIN: 'ตั้ง superadmin ได้เฉพาะ superadmin เท่านั้น',
+    NO_ACCOUNT: 'คนนี้ยังไม่มีบัญชี — สร้างบัญชีก่อน',
+    CANNOT_DEMOTE_SELF: 'ถอดสิทธิ์ตัวเองไม่ได้ ให้ Admin คนอื่นทำให้',
+    CANNOT_DISABLE_SELF: 'ปิดบัญชีตัวเองไม่ได้',
+    LAST_ADMIN: 'เหลือ Admin คนเดียว ถอดไม่ได้ ไม่งั้นจะไม่มีใครเข้าหน้า Admin ได้อีก',
+  })[code] || ('ทำรายการไม่สำเร็จ (' + (code || 'ไม่ทราบสาเหตุ') + ')');
+}
+
+/* สร้างบัญชี 1 คน — Edge Function สร้างบัญชีให้ถ้ายังไม่มี แล้วออก PIN */
+async function createOne(codeRaw, target) {
+  const code = String(codeRaw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const box = $(target);
+  if (!/^([0-9]{8}|[A-Z]{3}[0-9]{7})$/.test(code))
+    return toast('รหัสพนักงานต้องเป็นตัวเลข 8 หลัก หรือตัวอักษร 3 ตัว + เลข 7 หลัก', 1);
+  if (box) box.innerHTML = '<div class="lb" style="margin-top:9px">กำลังสร้าง…</div>';
+
+  const { data: r, error } = await sb.functions.invoke('issue-pin', { body: { employee_code: code } });
+  if (error || !r || r.ok !== true) {
+    const msg = r?.error || error?.message || 'ไม่ทราบสาเหตุ';
+    if (box) box.innerHTML = `<div class="note e" style="margin-top:9px"><span>⚠</span><span>${
+      esc(msg)}${/Function not found|404/i.test(msg)
+        ? '<br><b>ยังไม่ได้ deploy Edge Function issue-pin</b> — ดู supabase/README_DEPLOY.md' : ''}</span></div>`;
+    return null;
+  }
+  if (box) box.innerHTML = pinCardHtml(r);
+  loadUserList();
+  return r;
+}
+
+function pinCardHtml(r) {
+  return `<div class="card" style="margin-top:10px;border:2px solid var(--g)">
+    <div class="lb">${r.reissued ? 'ออก PIN ใบใหม่ให้' : 'สร้างบัญชีใหม่ให้'}</div>
+    <div class="vl">${esc(r.full_name || '')}</div>
+    <div class="lb mono">${esc(r.employee_code)}</div>
+    <div class="mono" style="font-size:31px;font-weight:800;letter-spacing:7px;
+      text-align:center;margin:11px 0">${esc(r.pin)}</div>
+    <div class="note w"><span>⏳</span><span>PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้
+      ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที</span></div>
+  </div>`;
+}
+
+/* ดึงรายชื่อที่ยังไม่มีบัญชี แล้วสร้างทีละคนพร้อมแสดงความคืบหน้า */
+async function findPending() {
+  const box = $('#bres');
+  box.innerHTML = '<div class="lb" style="margin-top:9px">กำลังค้นหา…</div>';
+  const { data } = await sb.rpc('admin_pending_codes', {
+    p_cost_center: $('#bcc').value.trim() || null,
+    p_onfield_only: $('#bfield').checked,
+    p_limit: Math.max(1, Math.min(200, Number($('#blim').value) || 20)),
+  });
+  if (data?.ok !== true) return box.innerHTML =
+    `<div class="note e"><span>⚠</span><span>${esc(roleErr(data?.code))}</span></div>`;
+
+  const list = data.codes || [];
+  if (!list.length) return box.innerHTML =
+    '<div class="note g"><span>✅</span><span>ทุกคนตามเงื่อนไขนี้มีบัญชีครบแล้ว</span></div>';
+
+  box.innerHTML = `<div class="note i" style="margin-top:9px"><span>👥</span><span>
+      ยังไม่มีบัญชีทั้งหมด <b>${data.total_pending}</b> คน —
+      รอบนี้จะสร้างให้ <b>${list.length}</b> คน</span></div>
+    <div style="max-height:190px;overflow:auto;margin:9px 0">${list.map(c =>
+      `<div class="lb mono">${esc(c.employee_code)} · ${esc(c.full_name || '')}</div>`).join('')}</div>
+    <button class="btn" id="brun">สร้างบัญชีให้ ${list.length} คนนี้</button>
+    <div id="bprog"></div>`;
+
+  $('#brun').onclick = async (e) => {
+    if (!await askConfirm('สร้างบัญชีหลายคน',
+        `จะสร้างบัญชีและออก PIN ให้ ${list.length} คน\n`
+        + 'PIN ทุกใบหมดอายุใน 7 วัน ต้องแจกให้ทันภายในสัปดาห์นี้',
+        'สร้างเลย')) return;
+    e.target.disabled = true;
+    const out = [], prog = $('#bprog');
+    for (let i = 0; i < list.length; i++) {
+      prog.innerHTML = `<div class="lb" style="margin-top:9px">กำลังสร้าง ${i + 1} / ${list.length} …</div>`;
+      const r = await createOne(list[i].employee_code, null);
+      out.push(r
+        ? { code: r.employee_code, name: r.full_name, pin: r.pin, ok: true }
+        : { code: list[i].employee_code, name: list[i].full_name, ok: false });
+    }
+    const good = out.filter(x => x.ok);
+    prog.innerHTML = `<div class="note ${good.length === out.length ? 'g' : 'w'}" style="margin-top:9px">
+        <span>${good.length === out.length ? '✅' : '⚠'}</span><span>
+        สำเร็จ ${good.length} จาก ${out.length} คน</span></div>
+      <div class="note e"><span>🔐</span><span>คัดลอกเก็บไว้เดี๋ยวนี้ —
+        PIN แสดงครั้งเดียว ปิดหน้านี้แล้วดูย้อนหลังไม่ได้</span></div>
+      <button class="btn gh" id="bcopy" style="margin-top:9px">📋 คัดลอกทั้งหมด</button>
+      <div style="max-height:240px;overflow:auto;margin-top:9px">${out.map(x =>
+        `<div class="lb mono">${esc(x.code)} · ${esc(x.name || '')} · ${
+          x.ok ? '<b style="font-size:14px">' + esc(x.pin) + '</b>' : 'ไม่สำเร็จ'}</div>`).join('')}</div>`;
+
+    $('#bcopy').onclick = () => {
+      const txt = good.map(x => `${x.code}\t${x.name || ''}\t${x.pin}`).join('\n');
+      navigator.clipboard.writeText(txt)
+        .then(() => toast('คัดลอกแล้ว วางในไฟล์ Excel ได้เลย'))
+        .catch(() => toast('คัดลอกไม่ได้ — กดค้างที่ข้อความเพื่อคัดลอกเอง', 1));
+    };
+    loadUserList();
+  };
+}
+
 async function viewAdmin() {
   const isAdmin = ['admin', 'superadmin'].includes(S.profile.role);
   if (!isAdmin) { shell('เครื่องมือ Admin',
@@ -2520,9 +3267,12 @@ async function viewAdmin() {
     el(`<div class="card"><h3>ออก PIN ให้พนักงาน</h3>
       <div class="sub">สำหรับพนักงานที่ไม่มีอีเมลบริษัท — PIN ใช้เข้าครั้งแรกครั้งเดียว หมดอายุ 7 วัน</div>
       <label class="f code"><span>รหัสพนักงาน</span>
-        <input id="ac" autocapitalize="characters" placeholder="80011786 / CMT1800500"></label>
+        <input id="ac" autocapitalize="characters" placeholder="80xxxxxx / CMTxxxxxxx"></label>
       <button class="btn gh" id="chk" style="margin-top:10px">🔍 ตรวจสอบรหัสพนักงาน</button>
       <div id="ares"></div></div>`),
+    el(`<div class="card"><h3>บัญชีผู้ใช้</h3>
+      <div class="sub">สร้างบัญชีให้พนักงาน · ตั้งสิทธิ์ Admin · ปิด-เปิดการใช้งาน</div>
+      <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
     el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
     el(`<div class="note i"><span>💻</span><span>นำเข้ารายชื่อพนักงานรายเดือนและซิงก์สาขา ทำจากเครื่องคอมพิวเตอร์<br>
       <span class="mono" style="font-size:11px">python tools/push_employees.py "&lt;ไฟล์.xlsx&gt;" --effective 2026-09-01</span></span></div>`),
@@ -2546,6 +3296,8 @@ async function viewAdmin() {
             · เปลี่ยนแปลง ${ni(b.rows_changed)} · หลุดจากไฟล์ ${ni(b.rows_left)}</div></div></div>`).join('');
     } catch { $('#hbox').innerHTML = '<h3>สุขภาพข้อมูล</h3><div class="lb">ยังไม่มีข้อมูล</div>'; }
   })();
+
+  $('#gousers').onclick = () => go('users');
 
   $('#chk').onclick = async () => {
     const code = $('#ac').value.trim().toUpperCase();
@@ -2732,7 +3484,7 @@ function go(v, opts) {
     home: viewHome, garage: viewGarage, active: viewActive, history: viewHistory,
     backup: viewBackupRequest, platechange: viewPlateChange,
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
-    admin: viewAdmin, settings: viewSettings,
+    admin: viewAdmin, users: viewUsers, settings: viewSettings,
   };
   (map[v] || viewHome)();
 }
@@ -2758,7 +3510,7 @@ async function loadMaster() {
     one('vehicle_models', 'id,brand_id,name', 'sort'),
     one('fuel_types', 'code,name_th', 'sort'),
     one('job_types', 'code,name_th,billable,needs_store,requires_note', 'sort'),
-    pageAll('stores', 'code,name,legacy_code,chain'),
+    pageAll('stores', 'code,name,legacy_code,chain,lat,lng'),
   ]);
   const m = { cost_centers: cc.data || [], provinces: pv.data || [], brands: br.data || [],
     models: md.data || [], fuel_types: ft.data || [], job_types: jt.data || [], stores: st || [] };
@@ -2856,7 +3608,7 @@ window.addEventListener('online', () => { S.online = true; sync(); if (S.view ==
 window.addEventListener('offline', () => { S.online = false; if (S.view === 'home') go('home'); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
-    if (S.trip && S.watchId == null) startWatch();
+    if (S.trip && !tracking()) startWatch();
     keepAwake(); sync();
     // กลับเข้าแอปแล้วเช็กว่าช่วงที่ไม่ได้ดูอยู่ ระบบตาบอดไปนานแค่ไหน
     warnGpsGap();
