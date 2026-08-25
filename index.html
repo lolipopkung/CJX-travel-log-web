@@ -828,6 +828,8 @@ function viewVehicle(opts = {}) {
         ${m.brands.map(x => `<option value="${x.id}" ${x.id === v?.brand_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <label class="f"><span>รุ่น</span><select id="md"><option value="">—</option></select></label>
     </div>
+    <label class="f hide" id="mfWrap"><span>พิมพ์รุ่นรถ</span>
+      <input id="mf" value="${esc(v?.model_free || '')}" placeholder="พิมพ์ชื่อรุ่นรถ"></label>
     <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="ft"><option value="">— เลือก —</option>
       ${m.fuel_types.map(f => `<option value="${esc(f.code)}" ${f.code === v?.fuel_type ? 'selected' : ''}>${esc(f.name_th)}</option>`).join('')}</select></label>
     <label class="f"><span>หมายเลข Fleet card (ถ้ามี)</span>
@@ -847,21 +849,32 @@ function viewVehicle(opts = {}) {
     own = x.dataset.o;
     $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
   });
+  const isOther = (mid) => {
+    const mm = m.models.find(x => x.id === +mid);
+    return mm && mm.name.startsWith('อื่นๆ');
+  };
+  const toggleFree = () => $('#mfWrap').classList.toggle('hide', !isOther($('#md').value));
   const fillModels = () => {
     const bid = +$('#br').value;
     $('#md').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
       .map(x => `<option value="${x.id}" ${x.id === v?.model_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    toggleFree();
   };
   $('#br').onchange = fillModels; fillModels();
+  $('#md').onchange = toggleFree;
 
   $('#ok').onclick = async (e) => {
     const plate = $('#pl').value.toUpperCase().replace(/\s+/g, '');
     if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
     if (!$('#pv').value || !$('#br').value || !$('#md').value || !$('#ft').value)
       return toast('กรอกข้อมูลรถให้ครบ', 1);
+    const otherModel = isOther($('#md').value);
+    const modelFree = otherModel ? $('#mf').value.trim() : null;
+    if (otherModel && !modelFree) return toast('เลือกรุ่น "อื่นๆ" แล้ว กรุณาพิมพ์ชื่อรุ่น', 1);
     const row = {
       user_id: S.profile.id, ownership: own, plate,
       province_id: +$('#pv').value, brand_id: +$('#br').value, model_id: +$('#md').value,
+      model_free: modelFree,
       fuel_type: $('#ft').value, fleet_card_no: $('#fc').value.trim() || null,
       is_primary: !backup && !S.vehicles.some(x => x.is_primary && x.id !== v?.id),
       is_backup: backup, active: true,
@@ -904,7 +917,7 @@ async function viewPlateChange() {
   let own = main.ownership;
   const b = el(`<main>
     <div class="note i"><span>🚗</span><span>ใช้เมื่อ<b>เปลี่ยนรถที่ใช้ประจำแบบถาวร</b>
-      เช่น ซื้อรถใหม่ เปลี่ยนรถบริษัท<br>
+
       ถ้าแค่ใช้รถคันอื่นชั่วคราวเพราะรถเสีย ให้เลือก
       <b>"ใช้รถทดแทนชั่วคราว"</b> แทน</span></div>
 
@@ -928,6 +941,8 @@ async function viewPlateChange() {
           <label class="f"><span>ยี่ห้อ</span><select id="nbr"><option value="">—</option>
             ${m.brands.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
           <label class="f"><span>รุ่น</span><select id="nmd"><option value="">—</option></select></label></div>
+        <label class="f hide" id="nmfWrap"><span>พิมพ์รุ่นรถ</span>
+          <input id="nmf" placeholder="พิมพ์ชื่อรุ่นรถ"></label>
         <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="nft"><option value="">— เลือก —</option>
           ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
         <div id="nfw"></div>
@@ -937,7 +952,7 @@ async function viewPlateChange() {
       </div></div>
 
     <label class="f"><span>เหตุผล (บังคับ)</span>
-      <textarea id="nr" placeholder="เช่น ซื้อรถใหม่แทนคันเดิมที่ขายไปแล้ว"></textarea></label>
+      <textarea id="nr"></textarea></label>
 
     <div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
@@ -958,12 +973,18 @@ async function viewPlateChange() {
       : 'รถส่วนตัวที่ได้รับบัตรก็กรอกได้ ไม่บังคับ';
   });
 
+  const nIsOther = (mid) => {
+    const mm = m.models.find(x => x.id === +mid); return mm && mm.name.startsWith('อื่นๆ');
+  };
+  const nToggle = () => $('#nmfWrap').classList.toggle('hide', !nIsOther($('#nmd').value));
   const fillModels = () => {
     const bid = +$('#nbr').value;
     $('#nmd').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
       .map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+    nToggle();
   };
   $('#nbr').onchange = fillModels;
+  $('#nmd').onchange = nToggle;
 
   $('#nft').onchange = () => {
     const box = $('#nfw'); box.innerHTML = '';
@@ -981,6 +1002,9 @@ async function viewPlateChange() {
     if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
     if (!$('#npv').value || !$('#nbr').value || !$('#nmd').value || !$('#nft').value)
       return toast('กรอกข้อมูลรถให้ครบ', 1);
+    const nOther = nIsOther($('#nmd').value);
+    const nModelFree = nOther ? $('#nmf').value.trim() : null;
+    if (nOther && !nModelFree) return toast('เลือกรุ่น "อื่นๆ" แล้ว กรุณาพิมพ์ชื่อรุ่น', 1);
     if (own === 'company' && !$('#nfc').value.trim())
       return toast('รถบริษัทต้องระบุหมายเลข Fleet card', 1);
     if ($('#nr').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
@@ -991,7 +1015,7 @@ async function viewPlateChange() {
       p_brand_id: +$('#nbr').value, p_model_id: +$('#nmd').value,
       p_fuel_type: $('#nft').value, p_ownership: own,
       p_fleet_card: $('#nfc').value.trim() || null,
-      p_reason: $('#nr').value.trim() });
+      p_reason: $('#nr').value.trim(), p_model_free: nModelFree });
 
     if (error || data?.ok !== true) {
       e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
@@ -1086,7 +1110,7 @@ async function viewBackupRequest() {
       </div></div>
 
     <label class="f"><span>เหตุผล (บังคับ)</span>
-      <textarea id="br" placeholder="เช่น รถประจำเข้าอู่เปลี่ยนคลัตช์ ใช้รถของภรรยาไปก่อน"></textarea></label>
+      <textarea id="br"></textarea></label>
 
     <div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
@@ -1474,7 +1498,50 @@ const NATIVE = {
   startTracking(sessionId) { return this.call('start', { sessionId }); },
   stopTracking()           { return this.call('stop'); },
   drain()                  { return this.call('drain'); },
+  permStatus()             { return this.call('perm_status'); },
+  permRequest()            { return this.call('perm_request'); },
+  openSettings()           { return this.call('open_settings'); },
 };
+
+/* บังคับสิทธิ์ตำแหน่ง "ตลอดเวลา" ก่อนเริ่มงาน — เฉพาะในเปลือกแอป Android
+   คืน true = ผ่าน (เริ่มงานได้) · false = ยังไม่ผ่าน (บล็อกไว้ แสดงวิธีแก้)
+   Android ตั้ง default ให้ไม่ได้ จึงบังคับด้วยการไม่ให้เริ่มงานจนกว่าจะตั้งถูก */
+async function ensureAlwaysLocation() {
+  if (!NATIVE.on) return true;                 // เว็บ/iPhone ไม่มีสิทธิ์นี้ ข้าม
+  let st = await NATIVE.permStatus();
+  if (st?.level === 'always') return true;
+
+  // ยังไม่เคยให้/ให้แค่ขณะใช้ -> ลองขอผ่าน dialog ก่อน
+  if (st?.level === 'denied' || st?.level === 'whenInUse') {
+    st = await NATIVE.permRequest();
+    if (st?.level === 'always') return true;
+  }
+  blockUntilAlways(st?.level || 'denied');
+  return false;
+}
+
+function blockUntilAlways(level) {
+  const serviceOff = level === 'serviceOff';
+  const d = el(`<div class="dlg" data-dismiss="no">
+    <div style="font-size:30px;text-align:center">📍</div>
+    <h3 style="text-align:center">ต้องเปิดตำแหน่ง "ตลอดเวลา" ก่อนเริ่มงาน</h3>
+    <div style="font-size:13.5px;line-height:1.7">${serviceOff
+      ? 'ยังไม่ได้เปิด GPS ของเครื่อง — เปิด GPS แล้วลองใหม่'
+      : 'แอปต้องบันทึกเส้นทางต่อเนื่องแม้ล็อกหน้าจอ จึงต้องตั้งสิทธิ์ตำแหน่งเป็น '
+        + '<b>"อนุญาตตลอดเวลา"</b> ถ้าตั้งเป็น "ขณะใช้แอป" ระบบจะจับพิกัดไม่ครบ '
+        + 'และระยะทางจะขาดหาย เบิกไม่ได้'}</div>
+    <div class="note w"><span>👉</span><span>กดปุ่มด้านล่าง → เลือก <b>ตำแหน่ง</b>
+      → เลือก <b>อนุญาตตลอดเวลา</b> แล้วกลับมากดเริ่มงานอีกครั้ง</span></div>
+    <button class="btn" id="permset">เปิดหน้าตั้งค่าสิทธิ์</button>
+    <button class="link" id="permre">ฉันตั้งเป็น "ตลอดเวลา" แล้ว ลองอีกครั้ง</button></div>`);
+  overlay(d);
+  $('#permset').onclick = () => NATIVE.openSettings();
+  $('#permre').onclick = async () => {
+    const st = await NATIVE.permStatus();
+    if (st?.level === 'always') { closeOverlay(); toast('ตั้งค่าถูกต้องแล้ว กดเริ่มงานได้เลย'); }
+    else toast('ยังไม่ใช่ "อนุญาตตลอดเวลา" — กดเปิดหน้าตั้งค่าแล้วเลือกให้ถูก', 1, 6000);
+  };
+}
 
 window.cjxNativeReply = (reqId, payload) => {
   const fn = NATIVE._waiting.get(reqId);
@@ -1682,6 +1749,8 @@ async function startFlow() {
   if (!usableToday(v)) return toast(
     v.approval_status === 'pending' ? 'รถสำรองคันนี้ยังรอหัวหน้าอนุมัติ' : 'รถคันนี้เลยกำหนดใช้งาน', 1);
   if (!window.isSecureContext) return toast('ต้องเปิดผ่าน https จึงจะใช้ GPS ได้', 1);
+  // ในเปลือกแอป Android: ต้องเป็นสิทธิ์ "ตลอดเวลา" เท่านั้นจึงเริ่มงานได้
+  if (!await ensureAlwaysLocation()) return;
   loading('กำลังขอสิทธิ์และจับพิกัด GPS…');
   try {
     const p = await getPos();
@@ -2370,7 +2439,7 @@ function viewTripEnd() {
       <div class="hint" id="eh">AI จะเติมให้จากรูป — เลขที่กรอกต้องตรงกับรูป</div>
       <div id="warn"></div></div>
     <label class="f"><span>หมายเหตุปิดงาน (ไม่บังคับ)</span>
-      <textarea id="nt" placeholder="เช่น สัญญาณหลุดช่วงเข้าเขาชะงุ้ม"></textarea></label>
+      <textarea id="nt"></textarea></label>
     <button class="btn stop lg" id="ok">ยืนยันสิ้นสุดการทำงาน</button>
   </main>`);
   shell('สิ้นสุดการทำงาน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
@@ -2769,7 +2838,11 @@ async function viewHistory() {
   const last = LS.get('lastTrip');
   if (last && !rows.some(r => r.id === last.id)) rows.unshift({ ...last, start_at: last.startAt });
 
-  const nodes = rows.length ? rows.map(r => {
+  // จัดกลุ่มตามเดือน (MMM-YY เช่น Aug-26) แล้วแสดงแต่ละเดือนแยกกัน
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthKey = d => MON[d.getMonth()] + '-' + String(d.getFullYear() % 100).padStart(2, '0');
+
+  const tripCard = (r) => {
     const st = new Date(r.start_at), km = (r.gps_distance_m || r.distM || 0) / 1000;
     const flagged = r.mock_detected || r.auto_closed;
     return el(`<div class="card" data-id="${esc(r.id)}" style="cursor:pointer${flagged ? ';border-color:var(--warn)' : ''}">
@@ -2778,7 +2851,29 @@ async function viewHistory() {
           r.status === 'active' ? 'กำลังทำงาน' : r.status === 'auto_closed' ? 'ระบบปิดให้' : 'ปิดงานแล้ว'}</span></div>
       <div class="lb" style="margin-top:5px">🕐 ${thTime(st)} → ${r.end_at ? thTime(new Date(r.end_at)) : '—'}
         &nbsp;·&nbsp; 🛣 <b>${nf(km)} กม.</b></div></div>`);
-  }) : [el('<div class="note i"><span>📭</span><span>ยังไม่มีประวัติการเดินทาง</span></div>')];
+  };
+
+  let nodes;
+  if (!rows.length) {
+    nodes = [el('<div class="note i"><span>📭</span><span>ยังไม่มีประวัติการเดินทาง</span></div>')];
+  } else {
+    nodes = [];
+    let curMonth = null;
+    for (const r of rows) {
+      const mk = monthKey(new Date(r.start_at));
+      if (mk !== curMonth) {
+        curMonth = mk;
+        // สรุประยะรวมของเดือนนั้น
+        const monKm = rows.filter(x => monthKey(new Date(x.start_at)) === mk)
+          .reduce((a, x) => a + (x.gps_distance_m || x.distM || 0) / 1000, 0);
+        const monN = rows.filter(x => monthKey(new Date(x.start_at)) === mk).length;
+        nodes.push(el(`<div style="display:flex;align-items:baseline;gap:8px;margin:6px 2px 2px">
+          <div style="font-size:17px;font-weight:800">${mk}</div>
+          <div class="lb">${monN} ทริป · รวม ${nf(monKm)} กม.</div></div>`));
+      }
+      nodes.push(tripCard(r));
+    }
+  }
 
   shell('ประวัติการเดินทาง', nodes, { tabs: true });
   document.querySelectorAll('[data-id]').forEach(n => n.onclick = async () => {
@@ -2919,6 +3014,7 @@ async function viewRequests(opts = {}) {
           ${r.fulfillment_status ? '<br><b>' + { pending_issue: '⏳ บัญชีกำลังออกบัตรใบใหม่',
             issued: '🎁 บัตรพร้อมให้รับแล้ว', collected: '✓ รับบัตรแล้ว' }[r.fulfillment_status] + '</b>' : ''}</div>
         ${r.fulfillment_status === 'issued' ? `<button class="btn" data-got="${r.id}" style="margin-top:8px;padding:9px">✓ ยืนยันว่ารับบัตรแล้ว</button>` : ''}
+        ${r.status === 'pending' ? `<button class="link" data-cancel="${r.id}" style="padding:6px 0 0;color:var(--r)">ยกเลิกคำขอนี้</button>` : ''}
       </div></div>`).join('')}</div></div>`));
 
     shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
@@ -2935,6 +3031,18 @@ async function viewRequests(opts = {}) {
       const { data } = await sb.rpc('confirm_fleet_card_collected', { p_request: b.dataset.got });
       toast(data?.ok ? 'อัปเดตเลขบัตรใหม่ให้เรียบร้อยแล้ว' : 'ทำรายการไม่สำเร็จ', !data?.ok);
       boot();
+    });
+    document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => {
+      if (!await askConfirm('ยกเลิกคำขอนี้',
+          'คำขอจะถูกยกเลิก และแจ้งให้หัวหน้างานทราบว่าไม่ต้องดำเนินการต่อ',
+          'ยกเลิกคำขอ', true)) return;
+      const { data } = await sb.rpc('cancel_change_request', { p_request: b.dataset.cancel });
+      if (data?.ok !== true) return toast(({
+        NOT_OWNER: 'ยกเลิกได้เฉพาะคำขอของตัวเอง',
+        ALREADY_DECIDED: 'คำขอนี้ถูกตัดสินไปแล้ว ยกเลิกไม่ได้',
+      })[data?.code] || 'ยกเลิกไม่สำเร็จ', 1);
+      toast('ยกเลิกคำขอแล้ว แจ้งหัวหน้างานเรียบร้อย');
+      go('requests');
     });
     $('#sub').onclick = async (e) => {
       const reason = $('#rs').value.trim();
