@@ -43,7 +43,7 @@ h1,h2,h3,.disp{font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;margin
 /* ---------- shell ---------- */
 #app{min-height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;background:var(--bg)}
 .appbar{
-  background:var(--y);color:var(--ink);padding:calc(10px + env(safe-area-inset-top,0px)) 14px 12px;
+  background:var(--y);color:var(--ink);padding:calc(6px + env(safe-area-inset-top,0px)) 14px 7px;
   display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20
 }
 .appbar .ttl{font-family:"Bai Jamjuree",sans-serif;font-weight:700;font-size:17px;flex:1;min-width:0;
@@ -2934,7 +2934,7 @@ const REQ_TYPES = [
   ['plate', 'เปลี่ยนรถประจำ (ถาวร)', 'ซื้อรถใหม่ / เปลี่ยนรถที่ใช้ประจำ'],
   // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
   ['vehicle_replace', 'ใช้รถทดแทนชั่วคราว', 'รถเสีย เข้าอู่ ต้องใช้รถคันอื่นชั่วคราว'],
-  ['backup_extend', 'ต่ออายุการใช้รถสำรอง', 'ยังต้องใช้รถสำรองต่อจากกำหนดเดิม'],
+  ['backup_extend', 'ต่ออายุการใช้รถทดแทน', 'ยังต้องใช้รถทดแทนต่อจากกำหนดเดิม'],
   // ปิด "ขอเพิ่มโควต้าน้ำมัน" ไว้ก่อนตามที่สั่ง 25 ส.ค. 2569 (ทำเผื่อไว้ ยังไม่ใช้)
   // เปิดคืนเมื่อไหร่ เอาคอมเมนต์บรรทัดล่างออก
   // ['quota', 'ขอเพิ่มโควต้าน้ำมัน', 'ปริมาณงานเพิ่มขึ้นจนโควต้าไม่พอ'],
@@ -2972,13 +2972,28 @@ async function viewRequests(opts = {}) {
     // ถ้ารถที่เลือกอยู่ไม่เข้าพวกกับประเภทนี้ (เช่น เข้ามาจากแถบล่างแล้ว default
     // เป็นรถหลัก) ให้ดีดไปคันแรกที่ถูกประเภท
     if (needsVeh && !vehList.some(v => v.id === vehicle?.id)) vehicle = vehList[0] || null;
+    // ต่ออายุรถทดแทน แต่ยังไม่เคยมีรถทดแทน = ต้องยื่น "ใช้รถทดแทนชั่วคราว" ก่อน
+    // ไม่ต้องโชว์ฟอร์มรายละเอียด เพราะยังไม่มีอะไรให้ต่ออายุ
+    if (type === 'backup_extend' && !vehList.length) {
+      nodes.push(el(`<div class="note w"><span>🚗</span><span>
+        คุณยังไม่มีรถทดแทนที่ใช้งานอยู่ — ต้องยื่น <b>"ใช้รถทดแทนชั่วคราว"</b>
+        และหัวหน้าอนุมัติก่อน จึงจะกดต่ออายุได้</span></div>`));
+      nodes.push(el(`<button class="btn" id="goreplace">ไปยื่นขอใช้รถทดแทนชั่วคราว</button>`));
+      shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
+      document.querySelectorAll('[data-t]').forEach(node => node.onclick = () => {
+        if (node.dataset.t === 'vehicle_replace') return go('backup');
+        if (node.dataset.t === 'plate') return go('platechange');
+        type = node.dataset.t; render();
+      });
+      $('#goreplace').onclick = () => go('backup');
+      return;   // หยุดตรงนี้ ไม่ต่อฟอร์มรายละเอียด/ปุ่มส่ง
+    }
+
     if (needsVeh) nodes.push(vehList.length
       ? el(`<label class="f"><span>รถที่เกี่ยวข้อง</span><select id="vh">
           ${vehList.map(v => `<option value="${v.id}" ${v.id === vehicle?.id ? 'selected' : ''}>${esc(v.plate)} · ${v.is_backup ? 'สำรอง' : 'หลัก'}</option>`).join('')}
           </select></label>`)
-      : el(`<div class="note w"><span>🚗</span><span>${type === 'backup_extend'
-          ? 'คุณยังไม่มีรถสำรองที่ลงทะเบียนไว้ — ยื่น "ใช้รถทดแทนชั่วคราว" ก่อน'
-          : 'ยังไม่มีรถในระบบ'}</span></div>`));
+      : el(`<div class="note w"><span>🚗</span><span>ยังไม่มีรถในระบบ</span></div>`));
     nodes.push(el(`<div class="card"><h3>รายละเอียดคำขอ</h3>
       <div class="lb" style="margin-top:7px">ค่าเดิม</div><div class="vl mono">${esc(oldVal || '(ไม่มี)')}</div>
       ${isFleet ? `<div class="lb" style="margin-top:11px">สาเหตุที่ต้องออกบัตรใบใหม่</div>
