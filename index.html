@@ -3705,13 +3705,27 @@ const dDT = (x) => x ? thDT(new Date(x)) : '';
 const dTime = (x) => x ? thTime(new Date(x)) : '';
 
 // ---- ตัวช่วย Export ----------------------------------------------------
+// ในเปลือกแอป Android: WebView ดาวน์โหลดไฟล์เอง (a[download]/blob) ไม่ได้
+// จึงส่งเนื้อไฟล์เป็น base64 ให้เปลือกเขียนไฟล์แล้วเปิดเมนูแชร์/บันทึกแทน
+// ในเบราว์เซอร์ปกติ (คอม/iPhone Safari): ดาวน์โหลดตรงแบบเดิม
 function dlFile(name, mime, content) {
+  if (NATIVE.on) { nativeSave(name, mime, content); return; }
   const blob = new Blob([content], { type: mime + ';charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click();
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+}
+async function nativeSave(name, mime, content) {
+  try {
+    // btoa รับได้เฉพาะ binary-string จึงแปลง UTF-8 -> binary ก่อน (ภาษาไทยไม่เพี้ยน)
+    const b64 = btoa(unescape(encodeURIComponent(content)));
+    toast('กำลังเตรียมไฟล์…');
+    const r = await NATIVE.call('save_file', { name, mime, b64 });
+    if (r?.ok) toast('เลือกที่บันทึก/แชร์ไฟล์ได้เลย');
+    else toast('บันทึกไฟล์ไม่สำเร็จ' + (r?.error ? ': ' + r.error : ''), 1, 6000);
+  } catch (e) { toast('บันทึกไฟล์ไม่สำเร็จ: ' + (e?.message || e), 1, 6000); }
 }
 function csvVal(v) {
   if (v == null) return '';
