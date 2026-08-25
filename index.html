@@ -69,6 +69,8 @@ main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
 .nav button[data-v="alerts"]   {--nav-c:#FFE9D9;--nav-b:#EA580C;--nav-t:#C2410C}
 .nav button[data-v="requests"] {--nav-c:#EDE6FE;--nav-b:#7C3AED;--nav-t:#6D28D9}
 .nav button[data-v="approvals"]{--nav-c:#DCF3E5;--nav-b:#16A34A;--nav-t:#15803D}
+.nav button[data-v="requests"]{--nav-c:#EDE6FE;--nav-b:#7C3AED;--nav-t:#6D28D9}
+.nav button{font-size:10px}
 
 /* ---------- blocks ---------- */
 .card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:14px}
@@ -511,8 +513,10 @@ function tabs() {
     <button data-v="home" class="${S.tab === 'home' ? 'on' : ''}"><span class="g">🏠</span>หน้าหลัก</button>
     <button data-v="history" class="${S.tab === 'history' ? 'on' : ''}"><span class="g">🕘</span>ประวัติ</button>
     <button data-v="alerts" class="${S.tab === 'alerts' ? 'on' : ''}"><span class="g">🔔</span>แจ้งเตือน${S.alerts ? `<span class="badge">${S.alerts}</span>` : ''}</button>
-    <button data-v="${isSup ? 'approvals' : 'requests'}" class="${['approvals', 'requests'].includes(S.tab) ? 'on' : ''}">
-      <span class="g">${isSup ? '✅' : '📝'}</span>${isSup ? 'อนุมัติ' : 'คำขอ'}${isSup && S.approvals ? `<span class="badge">${S.approvals}</span>` : ''}</button>
+    ${isSup ? `<button data-v="approvals" class="${S.tab === 'approvals' ? 'on' : ''}">
+      <span class="g">✅</span>อนุมัติ${S.approvals ? `<span class="badge">${S.approvals}</span>` : ''}</button>` : ''}
+    <button data-v="requests" class="${S.tab === 'requests' ? 'on' : ''}">
+      <span class="g">📝</span>คำขอ</button>
   </div>`);
   t.querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.v));
   return t;
@@ -1317,6 +1321,10 @@ function viewHome() {
     }
     nodes.push(el(`<button class="btn lg" id="start">▶  เริ่มปฏิบัติงาน</button>`));
     nodes.push(el(`<div class="note g"><span>🔒</span><span>ระบบจะเริ่มบันทึกเส้นทางเมื่อกดปุ่มนี้ และหยุดทันทีที่กด "สิ้นสุดการทำงาน"</span></div>`));
+    // ความเป็นส่วนตัว — ย้ายมาจากหน้าตั้งค่า 25 ส.ค. 2569 ให้พนักงานเห็นทุกวัน
+    nodes.push(el(`<div class="note i"><span>🔏</span><span>ระบบบันทึกตำแหน่งเฉพาะช่วง
+      "เริ่มปฏิบัติงาน → สิ้นสุดการทำงาน" เท่านั้น ช่วงเวลาอื่นไม่มีการเก็บพิกัดของคุณ
+      และไม่ได้ติดตามการเดินทางส่วนตัว</span></div>`));
   } else {
     const open = (t.stops || []).filter(s => !s.job_type_code).length;
     // ในเปลือกแอป Android ไม่ต้องเตือน เพราะเก็บต่อได้แม้ล็อกจอ
@@ -1395,8 +1403,7 @@ function viewGarage() {
       <div class="lb" style="margin-top:6px">${v.ownership === 'company' ? 'รถบริษัท' : 'รถส่วนตัว'} · ${esc(v.fuel_name || '')}${v.fleet_card_no ? ' · Fleet ' + esc(v.fleet_card_no) : ''}
         ${v.is_backup ? ' · ' + esc(v.use_from || '') + ' ถึง ' + esc(v.use_to || '') : ''}
         ${v.approval_status === 'pending' ? ' · <b style="color:var(--warn)">รออนุมัติ</b>' : ''}</div>
-      ${v.is_backup ? '' : `<button class="btn gh" data-ed="${v.id}"
-        style="margin-top:10px">แก้ไขข้อมูลรถ</button>`}</div>`);
+</div>`);
     return c;
   });
   const hasMain = !!primaryVehicle();
@@ -1413,7 +1420,9 @@ function viewGarage() {
       — ต้องระบุช่วงวันที่ และหัวหน้าอนุมัติก่อน</div>`));
   }
   shell('โรงรถของฉัน', nodes, { back: () => go('home'), tabs: true });
-  document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () =>
+  // ปุ่มแก้ไขข้อมูลรถหลักถูกถอดออก 25 ส.ค. 2569 — บันทึกครั้งแรกแล้วแก้ไม่ได้
+  // ถ้าเปลี่ยนรถจริงให้ยื่นคำขอ "เปลี่ยนรถประจำ (ถาวร)" แทน
+  document.querySelectorAll('[data-ed-disabled]').forEach(b => b.onclick = () =>
     viewVehicle({ vehicle: S.vehicles.find(x => x.id === b.dataset.ed) }));
   if ($('#addm')) $('#addm').onclick = () => viewVehicle({});
   if ($('#addb')) $('#addb').onclick = () => go('backup');
@@ -1559,7 +1568,7 @@ function startWatch() {
 }
 function stopWatch() {
   if (S.nativeTimer != null) { clearInterval(S.nativeTimer); S.nativeTimer = null; }
-  if (NATIVE.on) { drainNativePoints().then(() => NATIVE.stopTracking()); }
+  if (NATIVE.on) { NATIVE.stopTracking(); }
   if (S.watchId != null) navigator.geolocation.clearWatch(S.watchId);
   S.watchId = null; releaseAwake();
 }
@@ -1575,21 +1584,29 @@ function onPos(p) {
   const lastPt = t.points[t.points.length - 1];
   if (lastPt && (now - new Date(lastPt.at)) < CFG.gpsMinGapSec * 1000) return;
 
-  t.points.push({ at: new Date(now).toISOString(), lat: c.latitude, lng: c.longitude,
-    acc: c.accuracy, spd: c.speed, hdg: c.heading, alt: c.altitude });
+  // สัญญาณแม่นพอไหม — จุดที่แม่นยำแย่คือต้นเหตุหลักของเส้นทางหลอน
+  const accOk = c.accuracy != null && c.accuracy <= CFG.gpsMaxAccuracyM;
 
-  // นับระยะแบบกรองสัญญาณ — ไม่กรองระยะจะบวมเกินจริงเพราะ GPS สั่นตอนจอด
-  if (c.accuracy != null && c.accuracy <= CFG.gpsMaxAccuracyM) {
-    const last = t._counted;
-    if (!last) t._counted = { lat: c.latitude, lng: c.longitude, at: now };
-    else {
-      const d = haversineM(last.lat, last.lng, c.latitude, c.longitude);
-      const secs = Math.max((now - last.at) / 1000, .001);
-      if (d >= CFG.gpsMinMoveM) {
-        if (d / secs <= CFG.gpsMaxSpeedMps) t.distM += d;
-        t._counted = { lat: c.latitude, lng: c.longitude, at: now };
-      }
+  // ระยะสั่น = มากสุดระหว่าง 25 ม. กับค่าความคลาดเคลื่อนของจุดนี้
+  // ขยับน้อยกว่านี้ = อยู่ในวงความคลาดเคลื่อน ถือว่า "ยังไม่ได้ไปไหน"
+  // (จอดนิ่ง GPS ส่ายไม่กี่เมตร จะไม่ผ่านเกณฑ์นี้ จึงไม่วาดเส้นหลอน)
+  const jitter = Math.max(CFG.gpsMinMoveM, c.accuracy || 0);
+  const anchor = t._counted;
+  const movedFromAnchor = anchor
+    ? haversineM(anchor.lat, anchor.lng, c.latitude, c.longitude) : Infinity;
+
+  // จุดแรกของทริป (ยังไม่มี anchor) บันทึกเสมอ เพื่อปักหมุดจุดเริ่ม
+  // จุดถัดไปบันทึกลงเส้นทางเฉพาะเมื่อสัญญาณแม่น + ขยับเกินระยะสั่น
+  if (!anchor || (accOk && movedFromAnchor >= jitter)) {
+    t.points.push({ at: new Date(now).toISOString(), lat: c.latitude, lng: c.longitude,
+      acc: c.accuracy, spd: c.speed, hdg: c.heading, alt: c.altitude });
+
+    if (anchor && accOk) {
+      const secs = Math.max((now - anchor.at) / 1000, .001);
+      // กันจุดกระโดดเพราะสัญญาณเพี้ยน (เร็วเกินจริง) ไม่นับเข้าระยะ
+      if (movedFromAnchor / secs <= CFG.gpsMaxSpeedMps) t.distM += movedFromAnchor;
     }
+    t._counted = { lat: c.latitude, lng: c.longitude, at: now };
   }
   checkDwell(c, now);
   prunePoints();
@@ -2083,37 +2100,75 @@ function viewStopForm() {
     return haversineM(c.latitude, c.longitude, lat, lng) / 1000;
   };
 
-  // เลือกสาขาจากลิสต์ = ตรวจระยะทันที
+  // เลือกสถานที่จากลิสต์ = จำพิกัด + ตรวจระยะทันที
+  // (สาขา CJx/TD มี code · สถานที่ทั่วไปจาก OSM ไม่มี code แต่มีพิกัด)
   const afterPick = (x) => {
-    setStore(x);
+    if (x.code) setStore(x);            // สาขาในระบบ -> ผูก store_code
+    else setStore(null);                // สถานที่ทั่วไป -> เก็บแค่ชื่อ+พิกัด
     $('#pl2').value = x.name;
+    S.pickedPlaceLL = (x.lat != null && x.lng != null) ? { lat: x.lat, lng: x.lng } : null;
     $('#plsug').innerHTML = '';
     setFar(kmFromHere(x.lat, x.lng));
   };
 
-  // พิมพ์ในช่องชื่อสถานที่แล้วแนะนำสาขาที่ตรงกับคำค้น
+  const renderSug = (rows) => {
+    if (!rows.length) { $('#plsug').innerHTML = ''; return; }
+    $('#plsug').innerHTML = `<div class="list" style="margin:-4px 0 10px">${
+      rows.map((x, i) => {
+        const km = kmFromHere(x.lat, x.lng);
+        const head = x.code ? esc(x.code) + ' : ' + esc(x.name) : esc(x.name);
+        return `<div class="item" data-i="${i}" style="cursor:pointer">
+          <div class="tx"><div class="h" style="font-size:13px">${head}</div>
+          <div class="s">${x.code ? '' : '📍 '}${km == null ? 'ไม่มีพิกัด'
+            : (km > MAX_AWAY_KM ? '<b style="color:var(--r)">ห่าง ' + nf(km, 1) + ' กม.</b>'
+                                : 'ห่าง ' + nf(km, 2) + ' กม.')}${
+            x.lat != null ? ' · ' + Number(x.lat).toFixed(5) + ', ' + Number(x.lng).toFixed(5) : ''}</div></div></div>`;
+      }).join('')}</div>`;
+    $('#plsug').querySelectorAll('[data-i]').forEach(node =>
+      node.onclick = () => afterPick(rows[+node.dataset.i]));
+  };
+
+  // ค้นสถานที่ทั่วไปจาก Photon (บริการค้นหาสถานที่ของ OSM ฟรี ไม่ต้องใช้ API key
+  // ออกแบบมาเพื่อ autocomplete โดยเฉพาะ) — เอียงผลไปใกล้ตำแหน่งปัจจุบัน
+  let osmTimer = null, lastQ = '';
+  async function searchOsm(q) {
+    const c = pos?.coords || S.lastPos?.coords;
+    let url = 'https://photon.komoot.io/api/?lang=default&limit=6&q='
+      + encodeURIComponent(q);
+    if (c) url += '&lat=' + c.latitude + '&lon=' + c.longitude;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return [];
+      const j = await r.json();
+      return (j.features || []).map(f => {
+        const p = f.properties || {}, g = (f.geometry || {}).coordinates || [];
+        const name = [p.name, p.street, p.district || p.city, p.state]
+          .filter(Boolean).slice(0, 3).join(', ');
+        return { name: name || p.name || q, lat: g[1], lng: g[0] };
+      }).filter(x => x.lat != null);
+    } catch { return []; }
+  }
+
+  // พิมพ์แล้วแนะนำ: สาขาในระบบก่อน (ทันที) + สถานที่ทั่วไปจาก OSM (หน่วง)
   $('#pl2').oninput = () => {
-    const q = $('#pl2').value.trim().toLowerCase();
-    setFar(null);                       // พิมพ์เองถือว่ายังไม่ได้ยืนยันสถานที่
+    const raw = $('#pl2').value.trim(), q = raw.toLowerCase();
+    setFar(null); S.pickedPlaceLL = null;
     if (q.length < 2) { $('#plsug').innerHTML = ''; return; }
-    const hit = (S.master.stores || []).filter(x =>
+
+    const stores = (S.master.stores || []).filter(x =>
       String(x.name || '').toLowerCase().includes(q) ||
       String(x.code || '').toLowerCase().includes(q) ||
-      String(x.legacy_code || '').toLowerCase().includes(q)).slice(0, 8);
-    if (!hit.length) { $('#plsug').innerHTML = ''; return; }
-    $('#plsug').innerHTML = `<div class="list" style="margin:-4px 0 10px">${
-      hit.map(x => {
-        const km = kmFromHere(x.lat, x.lng);
-        return `<div class="item" data-pick="${esc(x.code)}" style="cursor:pointer">
-          <div class="tx"><div class="h mono" style="font-size:13px">${esc(x.code)} : ${esc(x.name)}</div>
-          <div class="s">${km == null ? 'ไม่มีพิกัดสาขานี้ในระบบ'
-            : (km > MAX_AWAY_KM ? '<b style="color:var(--r)">ห่าง ' + nf(km, 1) + ' กม.</b>'
-                                : 'ห่าง ' + nf(km, 2) + ' กม.')}</div></div></div>`;
-      }).join('')}</div>`;
-    $('#plsug').querySelectorAll('[data-pick]').forEach(node => node.onclick = () => {
-      const x = (S.master.stores || []).find(y => y.code === node.dataset.pick);
-      if (x) afterPick(x);
-    });
+      String(x.legacy_code || '').toLowerCase().includes(q)).slice(0, 6);
+    renderSug(stores);                         // โชว์สาขาทันที
+
+    clearTimeout(osmTimer);
+    if (q.length < 3) return;
+    osmTimer = setTimeout(async () => {
+      if (raw === lastQ) return; lastQ = raw;
+      const places = await searchOsm(raw);
+      if ($('#pl2').value.trim() !== raw) return;   // พิมพ์ต่อแล้ว ทิ้งผลเก่า
+      renderSug(stores.concat(places));             // รวมสาขา + สถานที่ทั่วไป
+    }, 600);
   };
 
   $('#ok').onclick = async (e) => {
@@ -2421,14 +2476,18 @@ function viewTripEnd() {
     t.end_lat = c.latitude ?? null; t.end_lng = c.longitude ?? null; t.end_accuracy_m = c.accuracy ?? null;
     t.odo_end = odo; t.odo_end_ai = ocr?.odometer_km ?? null;
     t.note = $('#nt').value.trim() || null;
+    // ดึงพิกัดที่เปลือกแอปเก็บไว้ตอนล็อกจอ/สลับแอป ให้ครบก่อนสรุป
+    // (ถ้าไม่รอ จุดเบื้องหลังจะยังค้างใน buffer แล้วสรุปเห็นเป็นสัญญาณขาด)
+    if (NATIVE.on) { try { await drainNativePoints(); } catch {} }
     stopWatch(); saveTrip();
 
     const done = { ...t };
-    await sync();
+    // ล้าง state ในเครื่องก่อน แล้วโชว์สรุปทันทีจากข้อมูลในเครื่อง
+    // ไม่รอเน็ต — sync/quota ทำเบื้องหลัง (คิวออฟไลน์กันข้อมูลหายอยู่แล้ว)
     LS.set('lastTrip', done); LS.del('trip'); S.trip = null;
     S.dwellAnchor = null; S.dwellStopId = null;
-    await refreshQuota();
     viewSummary(done, true);
+    sync().then(() => refreshQuota()).catch(() => {});
   };
 }
 
@@ -2781,7 +2840,9 @@ const REQ_TYPES = [
   // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
   ['vehicle_replace', 'ใช้รถทดแทนชั่วคราว', 'รถเสีย เข้าอู่ ต้องใช้รถคันอื่นชั่วคราว'],
   ['backup_extend', 'ต่ออายุการใช้รถสำรอง', 'ยังต้องใช้รถสำรองต่อจากกำหนดเดิม'],
-  ['quota', 'ขอเพิ่มโควต้าน้ำมัน', 'ปริมาณงานเพิ่มขึ้นจนโควต้าไม่พอ'],
+  // ปิด "ขอเพิ่มโควต้าน้ำมัน" ไว้ก่อนตามที่สั่ง 25 ส.ค. 2569 (ทำเผื่อไว้ ยังไม่ใช้)
+  // เปิดคืนเมื่อไหร่ เอาคอมเมนต์บรรทัดล่างออก
+  // ['quota', 'ขอเพิ่มโควต้าน้ำมัน', 'ปริมาณงานเพิ่มขึ้นจนโควต้าไม่พอ'],
 ];
 
 async function viewRequests(opts = {}) {
@@ -2810,9 +2871,19 @@ async function viewRequests(opts = {}) {
         ${REQ_TYPES.map(([k, l, h]) => `<div class="card" data-t="${k}" style="cursor:pointer;padding:11px${k === type ? ';border:2px solid var(--y-dk)' : ''}">
           <div style="font-size:13px;font-weight:700">${l}</div><div class="lb" style="font-size:10.5px">${h}</div></div>`).join('')}</div>`),
     ];
-    if (needsVeh) nodes.push(el(`<label class="f"><span>รถที่เกี่ยวข้อง</span><select id="vh">
-      ${S.vehicles.map(v => `<option value="${v.id}" ${v.id === vehicle?.id ? 'selected' : ''}>${esc(v.plate)} · ${v.is_backup ? 'สำรอง' : 'หลัก'}</option>`).join('')}
-      </select></label>`));
+    // ต่ออายุรถสำรอง = เลือกได้เฉพาะรถที่ลงทะเบียนเป็นรถสำรอง ไม่ใช่รถหลัก
+    const vehList = type === 'backup_extend'
+      ? S.vehicles.filter(v => v.is_backup) : S.vehicles;
+    // ถ้ารถที่เลือกอยู่ไม่เข้าพวกกับประเภทนี้ (เช่น เข้ามาจากแถบล่างแล้ว default
+    // เป็นรถหลัก) ให้ดีดไปคันแรกที่ถูกประเภท
+    if (needsVeh && !vehList.some(v => v.id === vehicle?.id)) vehicle = vehList[0] || null;
+    if (needsVeh) nodes.push(vehList.length
+      ? el(`<label class="f"><span>รถที่เกี่ยวข้อง</span><select id="vh">
+          ${vehList.map(v => `<option value="${v.id}" ${v.id === vehicle?.id ? 'selected' : ''}>${esc(v.plate)} · ${v.is_backup ? 'สำรอง' : 'หลัก'}</option>`).join('')}
+          </select></label>`)
+      : el(`<div class="note w"><span>🚗</span><span>${type === 'backup_extend'
+          ? 'คุณยังไม่มีรถสำรองที่ลงทะเบียนไว้ — ยื่น "ใช้รถทดแทนชั่วคราว" ก่อน'
+          : 'ยังไม่มีรถในระบบ'}</span></div>`));
     nodes.push(el(`<div class="card"><h3>รายละเอียดคำขอ</h3>
       <div class="lb" style="margin-top:7px">ค่าเดิม</div><div class="vl mono">${esc(oldVal || '(ไม่มี)')}</div>
       ${isFleet ? `<div class="lb" style="margin-top:11px">สาเหตุที่ต้องออกบัตรใบใหม่</div>
@@ -2828,11 +2899,7 @@ async function viewRequests(opts = {}) {
             <label class="f"><span>ถึงวันที่</span><input id="d2" type="date" value="${new Date(Date.now()+14*864e5).toISOString().slice(0,10)}"></label></div>`
         : `<label class="f" style="margin-top:11px"><span>ค่าใหม่</span><input id="nv"></label>`}
       <label class="f" style="margin-top:11px"><span>เหตุผล (บังคับ)</span>
-        <textarea id="rs" ${type === 'quota' ? '' :
-          'placeholder="เช่น แถบแม่เหล็กชำรุด รูดที่ปั๊มไม่ได้"'}></textarea></label>
-      ${type === 'quota' ? `<div class="note i" style="margin-top:9px"><span>📋</span><span>
-        การพิจารณาโควต้าน้ำมันใหม่ จะพิจารณาจาก<b>แผนการปฏิบัติงาน</b>
-        โดยจะทบทวน<b>ไตรมาสละครั้ง</b> และจะแจ้งผลให้ทราบทางอีเมลพนักงาน</span></div>` : ''}
+        <textarea id="rs"></textarea></label>
       </div>`));
     nodes.push(el(`<div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
@@ -2937,6 +3004,42 @@ async function viewApprovals() {
 
 /* คิวคำขอ PIN ใบใหม่ — พนักงานที่กด "ลืม PIN" บนหน้าเข้าระบบ
    ต้องยืนยันตัวตนก่อนออก PIN ใบใหม่ให้ทุกครั้ง ระบบไม่ยืนยันแทนให้ */
+/* คิวคำขอแก้ข้อมูลพนักงานที่หัวหน้าอนุมัติแล้ว รอ Admin แก้ที่ไฟล์ HR
+   (sql/26_profile_request_to_admin.sql) */
+async function loadProfileFixQueue() {
+  const box = $('#pfbox');
+  if (!box) return;
+  let rows = [];
+  try {
+    const { data } = await sb.from('v_profile_fixes_todo').select('*').limit(100);
+    rows = data || [];
+  } catch { box.innerHTML = ''; return; }   // ยังไม่ได้รัน sql/26 ก็ไม่โชว์
+
+  if (!rows.length) { box.innerHTML = ''; return; }
+
+  box.innerHTML = `<div class="card" style="border-color:var(--warn);border-width:2px">
+    <h3>รอแก้ข้อมูลพนักงาน (${rows.length})</h3>
+    <div class="sub">หัวหน้าอนุมัติแล้ว — แก้ที่ไฟล์รายชื่อพนักงานต้นทาง แล้วกดว่าแก้แล้ว</div>
+    ${rows.map(r => `<div class="item" style="align-items:flex-start">
+      <div class="tx" style="flex:1">
+        <div class="h">${esc(r.full_name || '')} <span class="mono lb">${esc(r.employee_code || '')}</span></div>
+        <div class="s">เดิม: ${esc(r.old_value || '-')}</div>
+        <div class="s"><b>ที่ถูก: ${esc(r.new_value || '-')}</b></div>
+        ${r.reason ? `<div class="s">เหตุผล: ${esc(r.reason)}</div>` : ''}
+        <button class="btn gh" style="width:auto;padding:7px 12px;margin-top:8px"
+                data-pffix="${esc(r.id)}">✓ แก้ข้อมูลแล้ว</button>
+      </div></div>`).join('')}</div>`;
+
+  box.querySelectorAll('[data-pffix]').forEach(b => b.onclick = async () => {
+    if (!await askConfirm('ยืนยันว่าแก้ข้อมูลแล้ว',
+        'แก้ข้อมูลที่ไฟล์รายชื่อพนักงานเรียบร้อยแล้วใช่ไหม', 'ใช่ แก้แล้ว')) return;
+    const { data } = await sb.rpc('admin_mark_profile_fixed', { p_request: b.dataset.pffix });
+    if (data?.ok !== true) return toast('ทำรายการไม่สำเร็จ', 1);
+    toast('บันทึกแล้ว — แจ้งพนักงานว่าแก้ให้แล้ว');
+    loadProfileFixQueue();
+  });
+}
+
 async function loadResetQueue() {
   const box = $('#rsbox');
   if (!box) return;
@@ -3299,6 +3402,7 @@ async function viewAdmin() {
     el(`<div class="card"><h3>บัญชีผู้ใช้</h3>
       <div class="sub">สร้างบัญชีให้พนักงาน · ตั้งสิทธิ์ Admin · ปิด-เปิดการใช้งาน</div>
       <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
+    el('<div id="pfbox"></div>'),
     el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
     el(`<div class="note i"><span>💻</span><span>นำเข้ารายชื่อพนักงานรายเดือนและซิงก์สาขา ทำจากเครื่องคอมพิวเตอร์<br>
       <span class="mono" style="font-size:11px">python tools/push_employees.py "&lt;ไฟล์.xlsx&gt;" --effective 2026-09-01</span></span></div>`),
@@ -3306,6 +3410,7 @@ async function viewAdmin() {
   shell('เครื่องมือ Admin', nodes, { back: true, tabs: true, actions: false });
 
   loadResetQueue();
+  loadProfileFixQueue();
 
   (async () => {
     try {
@@ -3359,13 +3464,52 @@ async function viewAdmin() {
   };
 }
 
+/* พนักงานขอแก้ไขข้อมูลส่วนตัว — ส่งหา Admin ไม่แก้เอง (sql/25_profile_edit_request.sql)
+   ยึดตามไฟล์ HR ที่ Admin อัปโหลด ถ้าผิดให้ Admin ตรวจแล้วแก้ที่ต้นทาง */
+function askProfileEdit() {
+  const p = S.profile;
+  const cur = (p.full_name || '') + ' · ' + (p.employee_code || '')
+    + ' · ' + (p.cost_center_code || '');
+  const d = el(`<div class="dlg">
+    <div style="font-size:28px;text-align:center">📝</div>
+    <h3 style="text-align:center">ขอแก้ไขข้อมูลส่วนตัว</h3>
+    <div class="note i"><span>ℹ</span><span>ข้อมูลนี้มาจากไฟล์รายชื่อพนักงานที่ Admin
+      อัปโหลด แก้เองไม่ได้ — กรอกว่าข้อมูลไหนไม่ถูกต้อง และที่ถูกคืออะไร
+      Admin จะตรวจแล้วแก้ให้</span></div>
+    <div class="lb" style="margin-top:8px">ข้อมูลปัจจุบัน</div>
+    <div class="vl mono" style="font-size:12.5px">${esc(cur)}</div>
+    <label class="f" style="margin-top:11px"><span>ข้อมูลที่ถูกต้องควรเป็น (บังคับ)</span>
+      <textarea id="pe_new" placeholder=""></textarea></label>
+    <label class="f"><span>เหตุผล / รายละเอียดเพิ่มเติม (บังคับ)</span>
+      <textarea id="pe_rs" placeholder=""></textarea></label>
+    <button class="btn" id="pe_ok">ส่งคำขอให้ Admin</button>
+    <button class="link" id="pe_x">ยกเลิก</button></div>`);
+  overlay(d);
+  $('#pe_x').onclick = closeOverlay;
+  $('#pe_ok').onclick = async (e) => {
+    const nv = $('#pe_new').value.trim(), rs = $('#pe_rs').value.trim();
+    if (nv.length < 3) return toast('กรอกข้อมูลที่ถูกต้อง', 1);
+    if (rs.length < 5) return toast('กรอกเหตุผลให้ Admin เข้าใจ', 1);
+    e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+    const { data, error } = await sb.rpc('submit_change_request', {
+      p_type: 'profile', p_field: 'ข้อมูลพนักงาน',
+      p_old: cur, p_new: nv, p_reason: rs,
+      p_vehicle: null, p_from: null, p_to: null, p_reason_code: null });
+    if (error || data?.ok !== true) { e.target.disabled = false;
+      e.target.textContent = 'ส่งคำขอให้ Admin';
+      return toast(error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ', 1, 7000); }
+    closeOverlay();
+    toast('ส่งคำขอแก้ไขข้อมูลให้ Admin แล้ว', 0, 6000);
+  };
+}
+
 async function viewSettings() {
   const p = S.profile;
   const cc = S.master.cost_centers.find(c => c.code === p.cost_center_code);
   const kv = (k, v) => `<div class="item"><div class="tx"><div class="s">${k}</div><div class="h">${esc(v ?? '—')}</div></div></div>`;
   const nodes = [
     el(`<div class="card"><div style="display:flex"><h3 style="flex:1">ข้อมูลพนักงาน</h3>
-      <button class="link" id="ed" style="padding:0">แก้ไข</button></div><div class="list">
+      <button class="link" id="reqedit" style="padding:0">ขอแก้ไข</button></div><div class="list">
       ${kv('ชื่อ-นามสกุล', p.full_name)}${kv('รหัสพนักงาน', p.employee_code)}
       ${kv('Cost center', cc?.name)}${kv('Cost center Code', p.cost_center_code)}
       ${kv('หัวหน้างาน (สายอนุมัติ)', S.supervisorName ? S.supervisorName + ' · ' + (p.supervisor_employee_code || '') : p.supervisor_employee_code)}
@@ -3380,14 +3524,7 @@ async function viewSettings() {
       ${S.vehicles.map(v => kv(v.is_primary ? 'รถหลัก' : 'รถสำรอง',
         `${v.plate} · ${v.brand_name || ''} ${v.model_name || ''}`)).join('') || kv('ยังไม่มีรถ', '—')}</div>
       <button class="btn gh" id="gg" style="margin-top:10px">จัดการโรงรถ</button></div>`),
-    // หัวหน้างานเห็นแท็บ "อนุมัติ" แทน "คำขอ" — ต้องมีทางเข้าคำขอของตัวเองด้วย
-    el(`<div class="card"><h3>คำขอเปลี่ยนแปลงข้อมูล</h3>
-      <div class="sub">Fleet card ชำรุด/หาย · เปลี่ยนทะเบียน · เปลี่ยนรถ · ต่ออายุรถสำรอง · ขอเพิ่มโควต้า</div>
-      <button class="btn gh" id="cr">เปิดหน้าคำขอของฉัน</button></div>`),
-    el(`<div class="card"><h3>ความเป็นส่วนตัว</h3>
-      <div class="note g" style="margin-top:8px"><span>🔒</span><span>ระบบบันทึกตำแหน่งเฉพาะช่วง
-        "เริ่มปฏิบัติงาน → สิ้นสุดการทำงาน" เท่านั้น ช่วงเวลาอื่นไม่มีการเก็บพิกัดของคุณ</span></div>
-      <div class="lb" style="margin-top:8px">เวอร์ชันข้อความยินยอมที่รับไว้: ${CFG.consentVersion}</div></div>`),
+    // คำขอย้ายไปแถบล่างแล้ว · ความเป็นส่วนตัวย้ายไปหน้าหลักแล้ว
     el(`<div class="card"><h3>ข้อจำกัดของเว็บแอป</h3>
       <div class="sub" style="margin:6px 0 0">เบราว์เซอร์จะหยุดส่งพิกัดถ้าปิดแท็บหรือล็อกหน้าจอไว้นาน
       ระหว่างเดินทางให้เปิดแอปค้างไว้ (แอปขอไม่ให้จอดับให้อัตโนมัติเท่าที่เครื่องรองรับ)
@@ -3396,9 +3533,10 @@ async function viewSettings() {
     el(`<div class="lb" style="text-align:center">${CFG.appName} · เว็บแอป 1.0</div>`),
   ];
   shell('ตั้งค่า', nodes, { back: true, tabs: true, actions: false });
-  $('#ed').onclick = () => viewProfile(false);
+  // ข้อมูลพนักงานยึดตามไฟล์ HR ที่ Admin อัปโหลด — แก้เองไม่ได้
+  // ถ้าพบว่าผิด ยื่นคำขอให้ Admin ตรวจแล้วแก้ให้
+  $('#reqedit').onclick = askProfileEdit;
   $('#gg').onclick = () => go('garage');
-  $('#cr').onclick = () => go('requests');
   // เปลี่ยน PIN เอง — หน้าเดียวกับตอนเข้าใช้งานครั้งแรก แต่มีปุ่มย้อนกลับ
   $('#chpin').onclick = () => viewSetPin(false);
   $('#out').onclick = async () => {
