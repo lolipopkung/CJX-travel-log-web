@@ -3182,8 +3182,34 @@ async function createOne(codeRaw, target) {
     return null;
   }
   if (box) box.innerHTML = pinCardHtml(r);
-  loadUserList();
+  // เด้งกลางจอด้วย เพื่อไม่ให้การ์ด PIN หายตอน loadUserList รีเฟรชรายการ
+  // (ตอนออกจากในแถว การ์ดที่วางในแถวจะถูกลบทิ้งเมื่อโหลดรายการใหม่)
+  showPinDialog(r);
   return r;
+}
+
+/* กล่อง PIN กลางจอ — ค้างไว้จนกด "เสร็จแล้ว" เพราะ PIN โชว์ครั้งเดียว
+   ต้องให้ Admin จดหรือคัดลอกก่อนปิด ไม่ใช่แวบหายเอง */
+function showPinDialog(r) {
+  const d = el(`<div class="dlg" data-dismiss="no">
+    <div style="font-size:30px;text-align:center">🔑</div>
+    <h3 style="text-align:center">${r.reissued ? 'PIN ใบใหม่' : 'สร้างบัญชีใหม่'}</h3>
+    <div style="text-align:center">
+      <div class="vl">${esc(r.full_name || '')}</div>
+      <div class="lb mono">${esc(r.employee_code)}</div></div>
+    <div class="mono" style="font-size:38px;font-weight:800;letter-spacing:9px;
+      text-align:center;margin:14px 0;color:var(--ink)">${esc(r.pin)}</div>
+    <div class="note w"><span>⏳</span><span>PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้
+      ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที</span></div>
+    <button class="btn" id="pincopy">📋 คัดลอก PIN</button>
+    <button class="btn gh" id="pindone">เสร็จแล้ว (จด PIN เรียบร้อย)</button></div>`);
+  overlay(d);
+  $('#pincopy').onclick = () => {
+    navigator.clipboard.writeText(String(r.pin))
+      .then(() => toast('คัดลอก PIN แล้ว'))
+      .catch(() => toast('คัดลอกไม่ได้ — จดด้วยมือแทน', 1));
+  };
+  $('#pindone').onclick = () => { closeOverlay(); loadUserList(); };
 }
 
 function pinCardHtml(r) {
