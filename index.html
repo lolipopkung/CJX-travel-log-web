@@ -1048,7 +1048,7 @@ async function viewPlateChange() {
 }
 
 /* ==================================================================== */
-/*  ขอใช้รถสำรองชั่วคราว                                                 */
+/*  ขอใช้รถทดแทนชั่วคราว                                                 */
 /* ==================================================================== */
 /* พนักงานสร้างรถสำรองเองไม่ได้ (RLS ปิดไว้ใน sql/11_backup_vehicle.sql)
    ต้องยื่นคำขอ ระบุช่วงวันที่ แล้วหัวหน้าอนุมัติ ระบบจึงสร้างรถให้
@@ -1062,7 +1062,7 @@ async function viewBackupRequest() {
   try { const { data } = await sb.rpc('my_backup_status'); st = data; } catch {}
   if (st?.pending_request) {
     const p = st.pending_request;
-    return shell('ขอใช้รถสำรองชั่วคราว', [
+    return shell('ขอใช้รถทดแทนชั่วคราว', [
       el(`<div class="note w"><span>⏳</span><span><b>มีคำขอรออนุมัติอยู่แล้ว</b><br>
         รถ <span class="mono">${esc(p.plate)}</span> · ช่วง ${esc(p.from)} ถึง ${esc(p.to)}<br>
         ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน หรือดูสถานะที่แท็บ "คำขอ"</span></div>`),
@@ -1071,7 +1071,7 @@ async function viewBackupRequest() {
       ($('#bk2').onclick = () => go('requests'));
   }
   if (st?.show_module) {
-    return shell('ขอใช้รถสำรองชั่วคราว', [
+    return shell('ขอใช้รถทดแทนชั่วคราว', [
       el(`<div class="note g"><span>✓</span><span><b>คุณมีรถสำรองที่ใช้ได้อยู่แล้ว</b><br>
         <span class="mono">${esc(st.vehicle.plate)}</span> ใช้ได้ถึง ${esc(st.vehicle.use_to)}
         (อีก ${st.vehicle.days_left} วัน)<br>
@@ -1133,8 +1133,8 @@ async function viewBackupRequest() {
     <button class="btn" id="bsub">ส่งคำขอให้หัวหน้าอนุมัติ</button>
   </main>`);
 
-  shell('ขอใช้รถสำรองชั่วคราว', [...b.childNodes],
-        { back: () => go('home'), tabs: true, actions: false });
+  shell('ขอใช้รถทดแทนชั่วคราว', [...b.childNodes],
+        { back: () => go('requests'), tabs: true, actions: false });
 
   $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
     own = x.dataset.o;
@@ -1363,7 +1363,7 @@ function viewHome() {
           <div style="flex:1"><b style="font-size:13.5px">รถเสีย ต้องใช้รถคันอื่นชั่วคราว?</b>
             <div class="lb">ยื่นคำขอใช้รถสำรอง ระบุช่วงวันที่ที่จะใช้
               หัวหน้าอนุมัติแล้วจะใช้ได้ตามช่วงวันที่นั้น</div></div></div>
-        <button class="btn gh" id="askbk" style="margin-top:10px">ขอใช้รถสำรองชั่วคราว</button></div>`));
+        <button class="btn gh" id="askbk" style="margin-top:10px">ขอใช้รถทดแทนชั่วคราว</button></div>`));
     }
     nodes.push(el(`<button class="btn lg" id="start">▶  เริ่มปฏิบัติงาน</button>`));
     nodes.push(el(`<div class="note g"><span>🔒</span><span>ระบบจะเริ่มบันทึกเส้นทางเมื่อกดปุ่มนี้ และหยุดทันทีที่กด "สิ้นสุดการทำงาน"</span></div>`));
@@ -1461,7 +1461,7 @@ function viewGarage() {
       เพราะ Fleet card ของบริษัทผูกกับ<b>ป้ายทะเบียน</b>และ<b>ชนิดน้ำมัน</b>
       เติมข้ามประเภทไม่ได้ (เก๋งเบนซิน → กระบะดีเซล ใช้บัตรเดิมไม่ได้)<br>
       เปลี่ยนรถประจำถาวร ให้ยื่นคำขอที่แท็บ "คำขอ"</span></div>`));
-    nodes.push(el('<button class="btn gh" id="addb">🔧 ขอใช้รถสำรองชั่วคราว</button>'));
+    nodes.push(el('<button class="btn gh" id="addb">🔧 ขอใช้รถทดแทนชั่วคราว</button>'));
     nodes.push(el(`<div class="hint">ใช้เฉพาะกรณีรถเสีย เข้าอู่ หรือต้องใช้รถคันอื่นชั่วคราว
       — ต้องระบุช่วงวันที่ และหัวหน้าอนุมัติก่อน</div>`));
   }
@@ -3059,7 +3059,7 @@ const REQ_TYPES = [
   // เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน จึงพาไปกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่
   ['plate', 'เปลี่ยนรถประจำ (ถาวร)', 'ซื้อรถใหม่ / เปลี่ยนรถที่ใช้ประจำ'],
   // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
-  ['vehicle_replace', 'ใช้รถทดแทนชั่วคราว', 'รถเสีย เข้าอู่ ต้องใช้รถคันอื่นชั่วคราว'],
+  ['vehicle_replace', 'ขอใช้รถทดแทนชั่วคราว', 'รถเสีย เข้าอู่ ต้องใช้รถคันอื่นชั่วคราว'],
   ['backup_extend', 'ต่ออายุการใช้รถทดแทน', 'ยังต้องใช้รถทดแทนต่อจากกำหนดเดิม'],
   // ปิด "ขอเพิ่มโควต้าน้ำมัน" ไว้ก่อนตามที่สั่ง 25 ส.ค. 2569 (ทำเผื่อไว้ ยังไม่ใช้)
   // เปิดคืนเมื่อไหร่ เอาคอมเมนต์บรรทัดล่างออก
