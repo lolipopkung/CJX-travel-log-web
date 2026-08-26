@@ -218,7 +218,7 @@ const CFG = {
   bucket: 'triplog',
   dwellMinutes: 30,      // แวะเกินเท่านี้ = ระบบ stamp พิกัดให้เอง
   dwellRadiusM: 80,
-  gpsMaxAccuracyM: 50,
+  gpsMaxAccuracyM: 35,   // สัญญาณแย่กว่านี้ทิ้ง — กันเส้นหลอนในเมือง/ตึกสูง (multipath)
   gpsMinMoveM: 25,
   gpsMaxSpeedMps: 55,
   // ระยะจากเลขไมล์ต่างจากระยะ GPS เกินกี่ส่วน = ผิดปกติ ต้องแจ้งหัวหน้า
@@ -1676,10 +1676,10 @@ function onPos(p) {
   // สัญญาณแม่นพอไหม — จุดที่แม่นยำแย่คือต้นเหตุหลักของเส้นทางหลอน
   const accOk = c.accuracy != null && c.accuracy <= CFG.gpsMaxAccuracyM;
 
-  // ระยะสั่น = มากสุดระหว่าง 25 ม. กับค่าความคลาดเคลื่อนของจุดนี้
-  // ขยับน้อยกว่านี้ = อยู่ในวงความคลาดเคลื่อน ถือว่า "ยังไม่ได้ไปไหน"
-  // (จอดนิ่ง GPS ส่ายไม่กี่เมตร จะไม่ผ่านเกณฑ์นี้ จึงไม่วาดเส้นหลอน)
-  const jitter = Math.max(CFG.gpsMinMoveM, c.accuracy || 0);
+  // ระยะสั่น = มากสุดระหว่าง 25 ม. กับ "2 เท่า" ของค่าความคลาดเคลื่อนของจุดนี้
+  // ต้องขยับเกินสองเท่าของวงคลาดเคลื่อนจึงนับว่าไปจริง — กันเส้นหลอนตอนเดินช้า/จอด
+  // ในเมืองที่ตึกสูงทำให้พิกัดเด้ง (จุด acc 20 ม. ที่เด้ง 30 ม. จะไม่ถูกนับ)
+  const jitter = Math.max(CFG.gpsMinMoveM, 2 * (c.accuracy || 0));
   const anchor = t._counted;
   const movedFromAnchor = anchor
     ? haversineM(anchor.lat, anchor.lng, c.latitude, c.longitude) : Infinity;
@@ -2646,8 +2646,34 @@ function viewTripEnd() {
     LS.set('lastTrip', done); LS.del('trip'); S.trip = null;
     S.dwellAnchor = null; S.dwellStopId = null;
     viewSummary(done, true);
-    sync().then(() => refreshQuota()).catch(() => {});
+    // ปิดงานให้จบแบบชัวร์ 3 ชั้น (กันบั๊ก "ปิดแล้วยังขึ้นกำลังทำงาน"):
+    //   1) sync() — ดันสถานะ ended + จุด + รูปขึ้น server (อาจล้มถ้าติดเงื่อนไขบางฟิลด์)
+    //   2) update ตรง ๆ เฉพาะ status/end_at — ฟิลด์น้อย โอกาสสำเร็จสูงสุด (RLS ให้แก้ทริปตัวเองที่ยัง active ได้)
+    //   3) RPC close_my_active_session — การันตีฝั่ง server (เผื่อ 1–2 ล้ม)
+    finalizeClose(done);
   };
+}
+
+/* ปิดงานให้จบฝั่งเซิร์ฟเวอร์แบบชัวร์ + เก็บ error ไว้ดูในหน้า "สถานะการซิงค์" */
+async function finalizeClose(done) {
+  S.lastCloseError = null;
+  try { await sync(); } catch (e) { S.lastCloseError = 'sync: ' + (e?.message || e); }
+  // ชั้นที่ 2: อัปเดตสถานะตรง ๆ (ฟิลด์น้อยสุด)
+  try {
+    const { error } = await sb.from('work_sessions')
+      .update({ status: 'ended', end_at: done.end_at })
+      .eq('id', done.id).eq('status', 'active');
+    if (error) S.lastCloseError = 'update: ' + error.message;
+  } catch (e) { S.lastCloseError = 'update: ' + (e?.message || e); }
+  // ชั้นที่ 3: RPC การันตี (ถ้าปิดไปแล้วจะได้ NO_ACTIVE = ไม่เป็นไร)
+  try {
+    const { data, error } = await sb.rpc('close_my_active_session', { p_note: done.note || null });
+    if (error) S.lastCloseError = 'rpc: ' + error.message;
+    else if (data && data.ok !== true && data.code !== 'NO_ACTIVE')
+      S.lastCloseError = 'rpc: ' + data.code;
+  } catch (e) { S.lastCloseError = 'rpc: ' + (e?.message || e); }
+  try { await refreshQuota(); } catch {}
+  if (S.lastCloseError) console.warn('finalizeClose', S.lastCloseError);
 }
 
 /* ---------------- สรุปทริป ---------------- */
@@ -3880,8 +3906,10 @@ function dataTable(cols, rows, render) {
     font-size:11px;color:var(--soft);white-space:nowrap;position:sticky;top:0;background:var(--card)">${esc(c.h)}</th>`).join('');
   const body = rows.map(r => '<tr>' + cols.map(c => {
     const href = c.link && c.link(r);
+    // ในเปลือกแอป: ลิงก์ปกติ (ไม่ target=_blank) ให้เปลือกดักเปิดภายนอกเอง
+    // บนเบราว์เซอร์คอม: เปิดแท็บใหม่ตามปกติ
     const cell = href
-      ? `<a href="${esc(href)}" target="_blank" rel="noopener" style="color:var(--b)">${esc(c.linkText || 'เปิด')}</a>`
+      ? `<a href="${esc(href)}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'} style="color:var(--b)">${esc(c.linkText || 'เปิด')}</a>`
       : (render ? render(c, r) : esc(c.v(r)));
     return `<td style="padding:6px 9px;border-bottom:1px solid #EEF0F3;font-size:12.5px;white-space:nowrap">${cell}</td>`;
   }).join('') + '</tr>').join('');
@@ -3931,10 +3959,11 @@ async function viewDashboard() {
     <button class="btn" id="dload" style="margin-top:11px">🔍 ดูรายงาน</button>
   </div>`);
 
-  const tabCard = el(`<div class="seg" id="dtabs" style="margin:2px 0 4px">
+  const tabCard = el(`<div class="seg" id="dtabs" style="margin:2px 0 4px;flex-wrap:wrap">
     <button data-t="overview">ภาพรวม</button>
     <button data-t="sessions">รายทริป</button>
     <button data-t="stops">จุดปฏิบัติงาน</button>
+    <button data-t="vehicles">รถ</button>
     <button data-t="requests">คำขอ/Ticket</button>
   </div>`);
 
@@ -3994,6 +4023,10 @@ async function loadDash() {
       const { data, error } = await sb.rpc('admin_report_stops', args);
       if (error || data?.ok !== true) throw error || new Error(data?.code);
       DASH.data.stops = data.rows; renderStops(data.rows);
+    } else if (DASH.tab === 'vehicles') {
+      const { data, error } = await sb.rpc('admin_report_vehicles', args);
+      if (error || data?.ok !== true) throw error || new Error(data?.code);
+      DASH.data.vehicles = data.rows; renderVehicles(data.rows);
     } else if (DASH.tab === 'requests') {
       const { data, error } = await sb.rpc('admin_report_requests',
         { ...args, p_status: null });
@@ -4139,6 +4172,37 @@ function renderStops(rows) {
   wireExport('stops', 'จุดปฏิบัติงาน', cols, rows);
 }
 
+function vehicleCols() {
+  return [
+    { h: 'รหัสพนักงาน', v: r => r.employee_code || '' },
+    { h: 'ชื่อ', v: r => r.full_name || '' },
+    { h: 'Cost center', v: r => r.cost_center_name || r.cost_center_code || '' },
+    { h: 'Cost center Code', v: r => r.cost_center_code || '' },
+    { h: 'ประเภทรถ', v: r => r.kind || '' },
+    { h: 'เจ้าของ', v: r => r.ownership || '' },
+    { h: 'ทะเบียน', v: r => r.plate || '' },
+    { h: 'จังหวัด', v: r => r.province || '' },
+    { h: 'ยี่ห้อ', v: r => r.brand || '' },
+    { h: 'รุ่น', v: r => r.model || '' },
+    { h: 'ชนิดน้ำมัน', v: r => r.fuel || '' },
+    { h: 'Fleet card', v: r => r.fleet_card_no || '' },
+    { h: 'ใช้ตั้งแต่', v: r => r.use_from ? dDate(r.use_from) : '' },
+    { h: 'ใช้ถึง', v: r => r.use_to ? dDate(r.use_to) : '' },
+    { h: 'สถานะอนุมัติ', v: r => r.approval_status || '' },
+  ];
+}
+function renderVehicles(rows) {
+  const cols = vehicleCols();
+  $('#dashbody').innerHTML =
+    exportBar('vehicles', rows.length) +
+    dataTable(cols, rows, (c, r) => {
+      if (c.h === 'ประเภทรถ')
+        return `<span class="pill ${r.kind === 'รถหลัก' ? 'b' : 'n'}">${esc(r.kind)}</span>`;
+      return esc(c.v(r));
+    });
+  wireExport('vehicles', 'ข้อมูลรถ', cols, rows);
+}
+
 function requestCols() {
   return [
     { h: 'วันที่ยื่น', v: r => dDT(r.created_at) },
@@ -4260,6 +4324,9 @@ async function viewSettings() {
           ? 'ดูสรุป/ส่งออกข้อมูลการปฏิบัติงาน'
           : (p.is_supervisor ? 'ดูของตัวเองและลูกน้องในสายอนุมัติ' : 'ดูสรุปการเดินทางของตัวเอง')}</div>
       <button class="btn gh" id="godashset" style="margin-top:10px">📊 เปิดรายงาน</button></div>`),
+    el(`<div class="card"><h3>สถานะการซิงค์ / งานที่ค้าง</h3>
+      <div class="sub">ดูว่ามีบันทึกการเดินทางที่ยังไม่ปิด หรือยังส่งขึ้นระบบไม่ครบไหม · ปิดงานที่ค้างได้เอง</div>
+      <button class="btn gh" id="gosync" style="margin-top:10px">🔄 ดูสถานะการซิงค์</button></div>`),
     // คำขอย้ายไปแถบล่างแล้ว · ความเป็นส่วนตัวย้ายไปหน้าหลักแล้ว
     el(`<div class="card"><h3>ข้อจำกัดของเว็บแอป</h3>
       <div class="sub" style="margin:6px 0 0">เบราว์เซอร์จะหยุดส่งพิกัดถ้าปิดแท็บหรือล็อกหน้าจอไว้นาน
@@ -4274,6 +4341,7 @@ async function viewSettings() {
   $('#reqedit').onclick = askProfileEdit;
   $('#gg').onclick = () => go('garage');
   $('#godashset').onclick = () => go('dashboard');
+  $('#gosync').onclick = () => go('syncstatus');
   // เปลี่ยน PIN เอง — หน้าเดียวกับตอนเข้าใช้งานครั้งแรก แต่มีปุ่มย้อนกลับ
   $('#chpin').onclick = () => viewSetPin(false);
   $('#out').onclick = async () => {
@@ -4284,6 +4352,91 @@ async function viewSettings() {
     stopWatch(); wipeUserCache(); LS.del('uid');
     await sb.auth.signOut(); location.reload();
   };
+}
+
+/* หน้าสถานะการซิงค์ + งานที่ยังไม่ปิด — กดปิดเองได้ และโชว์ error จริงถ้าปิดไม่สำเร็จ */
+async function viewSyncStatus() {
+  loading('กำลังตรวจสถานะ…');
+  let open = [];
+  let qErr = null;
+  try {
+    const { data, error } = await sb.from('work_sessions')
+      .select('id,start_at,status')
+      .eq('user_id', S.profile.id).eq('status', 'active')
+      .order('start_at', { ascending: false });
+    if (error) qErr = error.message; else open = data || [];
+  } catch (e) { qErr = e?.message || String(e); }
+  countPending();
+
+  const nodes = [
+    el(`<div class="card"><h3>สถานะการส่งข้อมูล</h3>
+      <div class="item"><div class="tx">
+        <div class="h">${S.online === false ? '🔴 ออฟไลน์' : '🟢 ออนไลน์'}</div>
+        <div class="s">ข้อมูลที่ยังไม่ได้ส่งขึ้นระบบ: <b>${S.pending || 0}</b> รายการ</div></div></div>
+      ${S.lastCloseError ? `<div class="note e" style="margin-top:8px"><span>⚠</span><span>
+        ปิดงานล่าสุดมีปัญหา: ${esc(S.lastCloseError)}</span></div>` : ''}
+      ${qErr ? `<div class="note e" style="margin-top:8px"><span>⚠</span><span>อ่านสถานะไม่ได้: ${esc(qErr)}</span></div>` : ''}
+      <button class="btn gh" id="dosync" style="margin-top:9px">🔄 ซิงค์เดี๋ยวนี้</button></div>`),
+  ];
+
+  if (!qErr && !open.length) {
+    nodes.push(el('<div class="note g"><span>✓</span><span>ไม่มีงานที่ค้างเปิดอยู่ — ปิดครบทุกทริปแล้ว</span></div>'));
+  } else if (open.length) {
+    nodes.push(el(`<div class="note w"><span>⚠</span><span>
+      มีงานที่ยังไม่ปิด <b>${open.length}</b> รายการ — กด "ปิดงานนี้ให้จบ" เพื่อปิด</span></div>`));
+    open.forEach(o => {
+      const st = new Date(o.start_at);
+      nodes.push(el(`<div class="card" data-oid="${esc(o.id)}">
+        <div style="display:flex;align-items:center"><div style="flex:1">
+          <div class="vl">${thDT(st)}</div>
+          <div class="lb">🕐 เริ่ม ${thTime(st)} · ยังเปิดอยู่</div></div>
+          <span class="pill g">กำลังทำงาน</span></div>
+        <button class="btn cls" style="margin-top:9px">ปิดงานนี้ให้จบ</button>
+        <div class="ff lb" style="margin-top:6px"></div></div>`));
+    });
+  }
+
+  shell('สถานะการซิงค์', nodes, { back: () => go('settings') });
+
+  $('#dosync').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = 'กำลังซิงค์…';
+    try { await sync(); } catch {}
+    toast('ซิงค์เรียบร้อย'); go('syncstatus');
+  };
+
+  document.querySelectorAll('[data-oid]').forEach(card => {
+    const btn = card.querySelector('.cls'), ff = card.querySelector('.ff');
+    btn.onclick = async () => {
+      if (!await askConfirm('ปิดงานที่ค้าง',
+          'ระบบจะปิดงานนี้ให้จบทันที (คำนวณระยะจากพิกัดที่มี)', 'ปิดงาน', true)) return;
+      btn.disabled = true; btn.textContent = 'กำลังปิด…'; ff.innerHTML = '';
+      // ชั้น 1: RPC (ปิด + คำนวณระยะ)
+      let closed = false, msg = '';
+      try {
+        const { data, error } = await sb.rpc('close_my_active_session', { p_note: 'ปิดจากหน้าสถานะซิงค์' });
+        if (error) msg = 'RPC: ' + error.message;
+        else if (data?.ok === true || data?.code === 'NO_ACTIVE') closed = true;
+        else msg = 'RPC: ' + (data?.code || 'ไม่สำเร็จ');
+      } catch (e) { msg = 'RPC: ' + (e?.message || e); }
+      // ชั้น 2 (ถ้า RPC ล้ม): อัปเดตสถานะตรง ๆ
+      if (!closed) {
+        try {
+          const { error } = await sb.from('work_sessions')
+            .update({ status: 'ended', end_at: new Date().toISOString() })
+            .eq('id', card.dataset.oid).eq('status', 'active');
+          if (!error) closed = true; else msg += ' · update: ' + error.message;
+        } catch (e) { msg += ' · update: ' + (e?.message || e); }
+      }
+      if (closed) {
+        LS.del('trip'); LS.del('lastTrip'); S.trip = null;
+        ff.innerHTML = '<span style="color:var(--g)">✅ ปิดเรียบร้อย</span>';
+        setTimeout(() => go('syncstatus'), 900);
+      } else {
+        ff.innerHTML = '<span style="color:var(--r)">❌ ' + esc(msg) + '</span>';
+        btn.disabled = false; btn.textContent = 'ลองใหม่';
+      }
+    };
+  });
 }
 
 /* ==================================================================== */
@@ -4387,6 +4540,7 @@ function go(v, opts) {
     backup: viewBackupRequest, platechange: viewPlateChange,
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
+    syncstatus: viewSyncStatus,
   };
   (map[v] || viewHome)();
 }
