@@ -3831,6 +3831,9 @@ function exportCSV(base, cols, rows) {
 function exportXLS(base, sheet, cols, rows) {
   const th = cols.map(c => `<th style="background:#FFD400;border:1px solid #ccc;padding:4px">${esc(c.h)}</th>`).join('');
   const trs = rows.map(r => '<tr>' + cols.map(c => {
+    // คอลัมน์แบบลิงก์ -> ทำเป็น hyperlink คลิกได้ใน Excel
+    const href = c.link && c.link(r);
+    if (href) return `<td style="border:1px solid #ddd;padding:3px"><a href="${esc(href)}">${esc(c.linkText || 'เปิด')}</a></td>`;
     const val = c.v(r);
     const num = (typeof val === 'number');
     // บังคับ text format กับ "ข้อความ/รหัส" กันรหัสพนักงานกลายเป็นเลขวิทยาศาสตร์
@@ -3864,9 +3867,13 @@ function dataTable(cols, rows, render) {
   if (!rows.length) return '<div class="note i"><span>ℹ</span><span>ไม่มีข้อมูลในช่วงที่เลือก</span></div>';
   const head = cols.map(c => `<th style="text-align:left;padding:6px 9px;border-bottom:2px solid var(--rule);
     font-size:11px;color:var(--soft);white-space:nowrap;position:sticky;top:0;background:var(--card)">${esc(c.h)}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c =>
-    `<td style="padding:6px 9px;border-bottom:1px solid #EEF0F3;font-size:12.5px;white-space:nowrap">${
-      render ? render(c, r) : esc(c.v(r))}</td>`).join('') + '</tr>').join('');
+  const body = rows.map(r => '<tr>' + cols.map(c => {
+    const href = c.link && c.link(r);
+    const cell = href
+      ? `<a href="${esc(href)}" target="_blank" rel="noopener" style="color:var(--b)">${esc(c.linkText || 'เปิด')}</a>`
+      : (render ? render(c, r) : esc(c.v(r)));
+    return `<td style="padding:6px 9px;border-bottom:1px solid #EEF0F3;font-size:12.5px;white-space:nowrap">${cell}</td>`;
+  }).join('') + '</tr>').join('');
   return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
     <table style="border-collapse:collapse;min-width:100%">
       <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -4091,6 +4098,9 @@ function stopCols() {
     { h: 'ออกนอกเส้นทาง', v: r => r.off_route ? 'ใช่' : '' },
     { h: 'หมายเหตุ', v: r => r.note || '' },
     { h: 'พิกัด', v: r => (r.lat != null && r.lng != null) ? `${r.lat}, ${r.lng}` : '' },
+    { h: 'ลิงก์แผนที่', linkText: 'เปิดแผนที่',
+      v: r => (r.lat != null && r.lng != null) ? `https://www.google.com/maps?q=${r.lat},${r.lng}` : '',
+      link: r => (r.lat != null && r.lng != null) ? `https://www.google.com/maps?q=${r.lat},${r.lng}` : null },
   ];
 }
 function renderStops(rows) {
