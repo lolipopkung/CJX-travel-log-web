@@ -2094,7 +2094,9 @@ async function closeStuckSession() {
     const { data, error } = await sb.rpc('close_my_active_session', { p_note: null });
     if (error || data?.ok !== true) {
       const code = { NO_ACTIVE: 'ไม่พบงานที่ค้างอยู่แล้ว', NO_AUTH: 'เซสชันหมดอายุ เข้าระบบใหม่' }[data?.code];
-      toast(code || ('ปิดไม่สำเร็จ: ' + (data?.code || error?.message || '')), 1, 6000);
+      // แสดง error จริง (sqlerrm) ถ้ามี เพื่อให้รู้ต้นเหตุแน่ชัด
+      const detail = data?.error || data?.code || error?.message || 'ไม่ทราบสาเหตุ';
+      toast(code || ('ปิดไม่สำเร็จ: ' + detail), 1, 12000);
     } else {
       toast('ปิดงานที่ค้างเรียบร้อยแล้ว');
     }
