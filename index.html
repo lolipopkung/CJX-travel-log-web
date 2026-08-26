@@ -1113,6 +1113,8 @@ async function viewBackupRequest() {
           <label class="f"><span>ยี่ห้อ</span><select id="bbr"><option value="">—</option>
             ${m.brands.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
           <label class="f"><span>รุ่น</span><select id="bmd"><option value="">—</option></select></label></div>
+        <label class="f hide" id="bmfWrap"><span>พิมพ์รุ่นรถ</span>
+          <input id="bmf" placeholder="พิมพ์ชื่อรุ่นรถ"></label>
         <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="bft"><option value="">— เลือก —</option>
           ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
         <div id="fuelwarn"></div>
@@ -1139,12 +1141,18 @@ async function viewBackupRequest() {
     $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
   });
 
+  const bIsOther = () => {
+    const mm = m.models.find(x => x.id === +$('#bmd').value); return mm && mm.name.startsWith('อื่นๆ');
+  };
+  const bToggle = () => $('#bmfWrap').classList.toggle('hide', !bIsOther());
   const fillModels = () => {
     const bid = +$('#bbr').value;
     $('#bmd').innerHTML = '<option value="">—</option>' + m.models.filter(x => x.brand_id === bid)
       .map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+    bToggle();
   };
   $('#bbr').onchange = fillModels;
+  $('#bmd').onchange = bToggle;
 
   // เตือนทันทีถ้าชนิดน้ำมันต่างจากรถประจำ — Fleet card ใบเดิมเติมไม่ได้
   const checkFuel = () => {
@@ -1174,6 +1182,8 @@ async function viewBackupRequest() {
     if (plate.length < 4 || !/[0-9]/.test(plate)) return toast('ทะเบียนรถไม่ถูกต้อง', 1);
     if (!$('#bpv').value || !$('#bbr').value || !$('#bmd').value || !$('#bft').value)
       return toast('กรอกข้อมูลรถสำรองให้ครบ', 1);
+    const bModelFree = $('#bmf').value.trim();
+    if (bIsOther() && !bModelFree) return toast('เลือกรุ่น "อื่นๆ" แล้ว กรุณาพิมพ์ชื่อรุ่น', 1);
     if ($('#br').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
     if ($('#bt').value < $('#bf').value) return toast('วันสิ้นสุดต้องไม่ก่อนวันเริ่มใช้', 1);
 
@@ -1184,7 +1194,8 @@ async function viewBackupRequest() {
       p_fuel_type: $('#bft').value, p_ownership: own,
       p_fleet_card: $('#bfc').value.trim() || null,
       p_from: $('#bf').value, p_to: $('#bt').value,
-      p_reason: $('#br').value.trim() });
+      p_reason: $('#br').value.trim(),
+      p_model_free: bModelFree || null });
 
     if (error || data?.ok !== true) {
       e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
@@ -3880,10 +3891,16 @@ function dataTable(cols, rows, render) {
 }
 
 async function viewDashboard() {
-  if (!['admin', 'superadmin'].includes(S.profile.role)) {
-    shell('Dashboard', [el('<div class="note w"><span>🔒</span><span>บัญชีนี้ไม่มีสิทธิ์ Admin</span></div>')],
-      { back: () => go('admin') }); return;
-  }
+  // ทุกคนที่ล็อกอินเข้าดูได้ — แต่ "เห็นได้แค่ไหน" ถูกจำกัดที่ SQL (sql/30):
+  //   superadmin = ทั้งหมด · หัวหน้า = ตัวเอง+ลูกน้องสายตรง · พนักงาน = เฉพาะตัวเอง
+  const role = S.profile.role;
+  const isAdmin = ['admin', 'superadmin'].includes(role);
+  const isSuper = role === 'superadmin';
+  const isSup = !!S.profile.is_supervisor;
+  const canPickPeople = isAdmin || isSup;    // เลือกกรอง CC/รายคนได้เมื่อดูได้หลายคน
+  const scopeLabel = isSuper ? 'ทั้งหมด' : (canPickPeople ? 'ทีมของฉัน' : 'ของฉัน');
+  if (!canPickPeople) { DASH.cc = ''; DASH.emp = ''; }   // พนักงานทั่วไป: ล้างตัวกรองคน
+
   const now = new Date();
   if (!DASH.from) DASH.from = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
   if (!DASH.to) DASH.to = isoDate(now);
@@ -3891,8 +3908,11 @@ async function viewDashboard() {
     .map(c => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');
 
   const filterCard = el(`<div class="card">
-    <h3>📊 Dashboard รายงาน</h3>
-    <div class="sub">สรุปการปฏิบัติงานของพนักงาน — เลือกช่วงวัน / Cost center / รายคน</div>
+    <h3>📊 รายงานการเดินทาง (${esc(scopeLabel)})</h3>
+    <div class="sub">${canPickPeople
+      ? (isSuper ? 'สรุปการปฏิบัติงานทั้งองค์กร — เลือกช่วงวัน / Cost center / รายคน'
+                 : 'เห็นเฉพาะตัวเองและลูกน้องในสายอนุมัติ — เลือกช่วงวัน / รายคน')
+      : 'สรุปการปฏิบัติงานของคุณ — เลือกช่วงวันที่'}</div>
     <div class="seg" id="dpreset" style="margin-bottom:10px">
       <button data-p="today">วันนี้</button>
       <button data-p="7">7 วัน</button>
@@ -3903,10 +3923,11 @@ async function viewDashboard() {
       <label class="f"><span>ตั้งแต่วันที่</span><input type="date" id="dfrom" value="${DASH.from}"></label>
       <label class="f"><span>ถึงวันที่</span><input type="date" id="dto" value="${DASH.to}"></label>
     </div>
-    <label class="f" style="margin-top:8px"><span>Cost center</span>
-      <select id="dcc"><option value="">— ทุก Cost center —</option>${ccOpts}</select></label>
+    ${canPickPeople ? `
+    ${isSuper ? `<label class="f" style="margin-top:8px"><span>Cost center</span>
+      <select id="dcc"><option value="">— ทุก Cost center —</option>${ccOpts}</select></label>` : ''}
     <label class="f" style="margin-top:8px"><span>พนักงาน (รหัส หรือ ชื่อ)</span>
-      <input id="demp" placeholder="เว้นว่าง = ทุกคน" value="${esc(DASH.emp)}"></label>
+      <input id="demp" placeholder="เว้นว่าง = ทุกคนที่ดูได้" value="${esc(DASH.emp)}"></label>` : ''}
     <button class="btn" id="dload" style="margin-top:11px">🔍 ดูรายงาน</button>
   </div>`);
 
@@ -3918,7 +3939,8 @@ async function viewDashboard() {
   </div>`);
 
   const body = el('<div id="dashbody"></div>');
-  shell('Dashboard รายงาน', [filterCard, tabCard, body], { back: () => go('admin'), tabs: false });
+  shell('รายงานการเดินทาง', [filterCard, tabCard, body],
+    { back: () => go(isAdmin ? 'admin' : 'home'), tabs: false });
 
   const setTabUI = () => tabCard.querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', b.dataset.t === DASH.tab));
@@ -4053,6 +4075,7 @@ function sessionCols() {
     { h: 'รหัสพนักงาน', v: r => r.employee_code || '' },
     { h: 'ชื่อ', v: r => r.full_name || '' },
     { h: 'Cost center', v: r => r.cost_center_name || r.cost_center_code || '' },
+    { h: 'Cost center Code', v: r => r.cost_center_code || '' },
     { h: 'เริ่มงาน', v: r => dDT(r.start_at) },
     { h: 'สิ้นสุด', v: r => r.end_at ? dDT(r.end_at) : (r.status === 'active' ? 'ยังเปิดอยู่' : '') },
     { h: 'ชม.', v: r => r.hours },
@@ -4088,6 +4111,7 @@ function stopCols() {
     { h: 'รหัสพนักงาน', v: r => r.employee_code || '' },
     { h: 'ชื่อ', v: r => r.full_name || '' },
     { h: 'Cost center', v: r => r.cost_center_name || r.cost_center_code || '' },
+    { h: 'Cost center Code', v: r => r.cost_center_code || '' },
     { h: 'ลำดับ', v: r => r.seq },
     { h: 'ประเภทงาน', v: r => r.job_type || '' },
     { h: 'สถานที่', v: r => r.place || '' },
@@ -4121,6 +4145,7 @@ function requestCols() {
     { h: 'รหัสพนักงาน', v: r => r.employee_code || '' },
     { h: 'ชื่อ', v: r => r.full_name || '' },
     { h: 'Cost center', v: r => r.cost_center_name || r.cost_center_code || '' },
+    { h: 'Cost center Code', v: r => r.cost_center_code || '' },
     { h: 'ประเภทคำขอ', v: r => REQ_TYPE_TH[r.req_type] || r.req_type },
     { h: 'หัวข้อ', v: r => r.field_label || '' },
     { h: 'จากเดิม', v: r => r.old_value || '' },
@@ -4230,6 +4255,11 @@ async function viewSettings() {
       ${S.vehicles.map(v => kv(v.is_primary ? 'รถหลัก' : 'รถสำรอง',
         `${v.plate} · ${v.brand_name || ''} ${v.model_name || ''}`)).join('') || kv('ยังไม่มีรถ', '—')}</div>
       <button class="btn gh" id="gg" style="margin-top:10px">จัดการโรงรถ</button></div>`),
+    el(`<div class="card"><h3>รายงานการเดินทาง</h3>
+      <div class="sub">${['admin','superadmin'].includes(p.role)
+          ? 'ดูสรุป/ส่งออกข้อมูลการปฏิบัติงาน'
+          : (p.is_supervisor ? 'ดูของตัวเองและลูกน้องในสายอนุมัติ' : 'ดูสรุปการเดินทางของตัวเอง')}</div>
+      <button class="btn gh" id="godashset" style="margin-top:10px">📊 เปิดรายงาน</button></div>`),
     // คำขอย้ายไปแถบล่างแล้ว · ความเป็นส่วนตัวย้ายไปหน้าหลักแล้ว
     el(`<div class="card"><h3>ข้อจำกัดของเว็บแอป</h3>
       <div class="sub" style="margin:6px 0 0">เบราว์เซอร์จะหยุดส่งพิกัดถ้าปิดแท็บหรือล็อกหน้าจอไว้นาน
@@ -4243,6 +4273,7 @@ async function viewSettings() {
   // ถ้าพบว่าผิด ยื่นคำขอให้ Admin ตรวจแล้วแก้ให้
   $('#reqedit').onclick = askProfileEdit;
   $('#gg').onclick = () => go('garage');
+  $('#godashset').onclick = () => go('dashboard');
   // เปลี่ยน PIN เอง — หน้าเดียวกับตอนเข้าใช้งานครั้งแรก แต่มีปุ่มย้อนกลับ
   $('#chpin').onclick = () => viewSetPin(false);
   $('#out').onclick = async () => {
