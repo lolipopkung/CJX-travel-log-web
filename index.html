@@ -4090,8 +4090,7 @@ function stopCols() {
     { h: 'อยู่ (นาที)', v: r => r.dwell_minutes ?? '' },
     { h: 'ออกนอกเส้นทาง', v: r => r.off_route ? 'ใช่' : '' },
     { h: 'หมายเหตุ', v: r => r.note || '' },
-    { h: 'Latitude', v: r => r.lat ?? '' },
-    { h: 'Longitude', v: r => r.lng ?? '' },
+    { h: 'พิกัด', v: r => (r.lat != null && r.lng != null) ? `${r.lat}, ${r.lng}` : '' },
   ];
 }
 function renderStops(rows) {
