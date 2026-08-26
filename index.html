@@ -70,6 +70,7 @@ main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
 .nav button[data-v="requests"] {--nav-c:#EDE6FE;--nav-b:#7C3AED;--nav-t:#6D28D9}
 .nav button[data-v="approvals"]{--nav-c:#DCF3E5;--nav-b:#16A34A;--nav-t:#15803D}
 .nav button[data-v="requests"]{--nav-c:#EDE6FE;--nav-b:#7C3AED;--nav-t:#6D28D9}
+.nav button[data-v="dashboard"]{--nav-c:#D9F2F0;--nav-b:#0D9488;--nav-t:#0F766E}
 .nav button{font-size:10px}
 
 /* ---------- blocks ---------- */
@@ -525,6 +526,8 @@ function tabs() {
       <span class="g">✅</span>อนุมัติ${S.approvals ? `<span class="badge">${S.approvals}</span>` : ''}</button>` : ''}
     <button data-v="requests" class="${S.tab === 'requests' ? 'on' : ''}">
       <span class="g">📝</span>คำขอ</button>
+    <button data-v="dashboard" class="${S.tab === 'dashboard' ? 'on' : ''}">
+      <span class="g">📊</span>รายงาน</button>
   </div>`);
   t.querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.v));
   return t;
@@ -2062,17 +2065,11 @@ function viewActive() {
   if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
   if (!tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
   nodes.push(el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
-  // ทริปที่ถูกกู้จากเซิร์ฟเวอร์ (ค้าง "กำลังทำงาน") — ปิดฉุกเฉินได้ ไม่ต้องถ่ายเลขไมล์
-  if (t._recovered) nodes.push(el(`<div class="note w" style="margin-top:4px">
-    <span>⚠</span><span>ทริปนี้ถูกกู้จากเซิร์ฟเวอร์ ถ้าคุณปิดงานนี้ไปแล้วแต่ระบบยังค้าง
-    ให้กด <b>ปิดงานที่ค้าง</b> ด้านล่าง</span></div>`),
-    el('<button class="link" id="forceend" style="color:var(--r)">ปิดงานที่ค้างนี้ (ฉุกเฉิน)</button>'));
 
   shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
   $('#addstop').onclick = () => viewStopForm();
   $('#addfuel').onclick = () => viewFuelForm();
   $('#end').onclick = () => viewTripEnd();
-  if ($('#forceend')) $('#forceend').onclick = () => closeStuckSession();
   if ($('#resume')) $('#resume').onclick = () => { startWatch(); go('active'); };
   document.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => {
     const s = t.stops.find(x => x.id === b.dataset.cls); askDwell(s.id, s.dwell_minutes || 0); });
@@ -2665,23 +2662,23 @@ function viewTripEnd() {
 /* ปิดงานให้จบฝั่งเซิร์ฟเวอร์แบบชัวร์ + เก็บ error ไว้ดูในหน้า "สถานะการซิงค์" */
 async function finalizeClose(done) {
   S.lastCloseError = null;
+  // ส่งจุดพิกัด/รูป/น้ำมันขึ้นระบบก่อน (best effort — ล้มก็ยังปิดงานต่อได้)
   try { await sync(); } catch (e) { S.lastCloseError = 'sync: ' + (e?.message || e); }
-  // ชั้นที่ 2: อัปเดตสถานะตรง ๆ (ฟิลด์น้อยสุด)
-  try {
-    const { error } = await sb.from('work_sessions')
-      .update({ status: 'ended', end_at: done.end_at })
-      .eq('id', done.id).eq('status', 'active');
-    if (error) S.lastCloseError = 'update: ' + error.message;
-  } catch (e) { S.lastCloseError = 'update: ' + (e?.message || e); }
-  // ชั้นที่ 3: RPC การันตี (ถ้าปิดไปแล้วจะได้ NO_ACTIVE = ไม่เป็นไร)
+  // ปิดงานด้วย RPC ที่ปิดสำเร็จทุกครั้ง (ปิด trigger ชั่วคราว + idempotent)
+  // ถ้า RPC สำเร็จ ให้ถือว่าปิดงานเสร็จสมบูรณ์ และล้าง error จากขั้น sync ทิ้ง
   try {
     const { data, error } = await sb.rpc('close_my_active_session', { p_note: done.note || null });
     if (error) S.lastCloseError = 'rpc: ' + error.message;
-    else if (data && data.ok !== true && data.code !== 'NO_ACTIVE')
-      S.lastCloseError = 'rpc: ' + data.code;
+    else if (data && data.ok === true) S.lastCloseError = null;      // ปิดสำเร็จแน่นอน
+    else S.lastCloseError = 'ปิดงานไม่สำเร็จ: ' + (data?.error || data?.code || 'ไม่ทราบสาเหตุ');
   } catch (e) { S.lastCloseError = 'rpc: ' + (e?.message || e); }
   try { await refreshQuota(); } catch {}
-  if (S.lastCloseError) console.warn('finalizeClose', S.lastCloseError);
+  if (S.lastCloseError) {
+    console.warn('finalizeClose', S.lastCloseError);
+    // แจ้งให้เห็นชัด ๆ พร้อมสาเหตุจริง — จะได้ไม่เข้าใจผิดว่าปิดแล้วทั้งที่ยังค้าง
+    toast('ปิดงานขึ้นระบบไม่สำเร็จ — ' + S.lastCloseError
+      + '\nไปที่ ตั้งค่า › สถานะการซิงค์ เพื่อปิดงานที่ค้างอีกครั้ง', 1, 12000);
+  }
 }
 
 /* ---------------- สรุปทริป ---------------- */
@@ -3790,9 +3787,6 @@ async function viewAdmin() {
     el(`<div class="card"><h3>บัญชีผู้ใช้</h3>
       <div class="sub">สร้างบัญชีให้พนักงาน · ตั้งสิทธิ์ Admin · ปิด-เปิดการใช้งาน</div>
       <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
-    el(`<div class="card"><h3>รายงาน &amp; Dashboard</h3>
-      <div class="sub">สรุปการปฏิบัติงานรายวัน–รายเดือน รายคน / ราย Cost center · ส่งออก Excel / CSV</div>
-      <button class="btn gh" id="godash" style="margin-top:10px">📊 เปิด Dashboard รายงาน</button></div>`),
     el('<div id="pfbox"></div>'),
     el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
     el(`<div class="note i"><span>💻</span><span>นำเข้ารายชื่อพนักงานรายเดือนและซิงก์สาขา ทำจากเครื่องคอมพิวเตอร์<br>
@@ -3820,7 +3814,6 @@ async function viewAdmin() {
   })();
 
   $('#gousers').onclick = () => go('users');
-  $('#godash').onclick = () => go('dashboard');
 
   $('#chk').onclick = async () => {
     const code = $('#ac').value.trim().toUpperCase();
@@ -3964,6 +3957,7 @@ function dataTable(cols, rows, render) {
 }
 
 async function viewDashboard() {
+  S.tab = 'dashboard';
   // ทุกคนที่ล็อกอินเข้าดูได้ — แต่ "เห็นได้แค่ไหน" ถูกจำกัดที่ SQL (sql/30):
   //   superadmin = ทั้งหมด · หัวหน้า = ตัวเอง+ลูกน้องสายตรง · พนักงาน = เฉพาะตัวเอง
   const role = S.profile.role;
@@ -4013,8 +4007,7 @@ async function viewDashboard() {
   </div>`);
 
   const body = el('<div id="dashbody"></div>');
-  shell('รายงานการเดินทาง', [filterCard, tabCard, body],
-    { back: () => go(isAdmin ? 'admin' : 'home'), tabs: false });
+  shell('รายงานการเดินทาง', [filterCard, tabCard, body], { tabs: true });
 
   const setTabUI = () => tabCard.querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', b.dataset.t === DASH.tab));
