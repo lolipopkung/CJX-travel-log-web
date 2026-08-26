@@ -1590,7 +1590,7 @@ async function drainNativePoints() {
       timestamp: new Date(p.at).getTime(),
     });
   }
-  if (pts.length) { saveTrip(); paintActive(); }
+  if (pts.length) { detectDwellStops(S.trip); saveTrip(); paintActive(); }
   return pts.length;
 }
 
@@ -1732,6 +1732,46 @@ function checkDwell(c, now) {
   saveTrip();
   toast(`ตรวจพบว่าคุณแวะที่นี่ ${mins} นาที — ช่วยระบุว่าแวะทำอะไร`);
   if (S.view === 'active') askDwell(id, mins);
+}
+
+/* จับ "จุดจอดนาน" จากเส้นทางที่บันทึกไว้ทั้งเส้น — สำคัญสำหรับโหมดพื้นหลัง
+   เพราะตอนจอดนิ่ง เปลือกแอปไม่ส่งพิกัดใหม่ (distanceFilter) checkDwell แบบสด
+   จึงจับไม่ได้ วิธีนี้ดูจาก "คู่จุดที่อยู่ติดกัน" ที่ห่างกันไม่เกิน dwellRadius
+   แต่เวลาต่างกันเกิน dwellMinutes = จอดอยู่ตรงนั้นนาน (ไม่ใช่สัญญาณขาดตอนวิ่ง
+   เพราะถ้าวิ่งจุดถัดไปจะอยู่ไกล) แล้วสร้างจุดปฏิบัติงานให้อัตโนมัติรอผู้ใช้ระบุงาน
+   เรียกได้บ่อย ๆ ระหว่างทริปและตอนปิดงาน — กันซ้ำด้วยช่วงเวลาที่มีจุดอยู่แล้ว */
+function detectDwellStops(t) {
+  if (!t || !(t.points || []).length || t.points.length < 2) return 0;
+  const minMs = CFG.dwellMinutes * 60000;
+  const pts = t.points;
+  let added = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const gap = new Date(b.at) - new Date(a.at);
+    if (gap < minMs) continue;                                   // เวลาห่างไม่ถึงเกณฑ์
+    if (haversineM(a.lat, a.lng, b.lat, b.lng) > CFG.dwellRadiusM) continue; // ไกล = สัญญาณขาดตอนวิ่ง ไม่ใช่จอด
+    const arrive = new Date(a.at).getTime();
+    // มีจุด (สด/manual) ครอบเวลานี้อยู่แล้วหรือยัง — กันซ้ำ
+    const dup = (t.stops || []).some(s => {
+      const sa = new Date(s.arrive_at).getTime();
+      const sd = s.depart_at ? new Date(s.depart_at).getTime()
+                             : sa + (s.dwell_minutes || 0) * 60000;
+      return arrive >= sa - 5 * 60000 && arrive <= sd + 5 * 60000;
+    });
+    if (dup) continue;
+    t.stops.push({ id: uuid(), session_id: t.id, seq: t.stops.length + 1,
+      job_type_code: null, source: 'auto_dwell', dwell_minutes: Math.round(gap / 60000),
+      needs_reason: true, arrive_at: a.at, arrive_lat: a.lat, arrive_lng: a.lng,
+      depart_at: b.at, depart_lat: b.lat, depart_lng: b.lng, _dirty: 1 });
+    added++;
+  }
+  if (added) {
+    // เรียงจุดตามเวลา แล้วรันเลขลำดับใหม่ให้ต่อเนื่อง
+    t.stops.sort((x, y) => new Date(x.arrive_at) - new Date(y.arrive_at));
+    t.stops.forEach((s, i) => s.seq = i + 1);
+    saveTrip();
+  }
+  return added;
 }
 
 /* เตือน 21:00 ที่ตัวเอง · 22:00 ระบบฝั่งเซิร์ฟเวอร์แจ้งหัวหน้า */
@@ -2585,6 +2625,7 @@ function viewTripEnd() {
     // ดึงพิกัดที่เปลือกแอปเก็บไว้ตอนล็อกจอ/สลับแอป ให้ครบก่อนสรุป
     // (ถ้าไม่รอ จุดเบื้องหลังจะยังค้างใน buffer แล้วสรุปเห็นเป็นสัญญาณขาด)
     if (NATIVE.on) { try { await drainNativePoints(); } catch {} }
+    detectDwellStops(t);   // จับจุดจอดนานที่ยังไม่ถูก mark (รวมช่วงที่อยู่เบื้องหลัง)
     stopWatch(); saveTrip();
 
     const done = { ...t };
@@ -2625,10 +2666,9 @@ function viewSummary(t, justDone) {
     <div class="sub">${(t.points || []).length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
     <div class="map" id="lmap"></div>
     ${blindMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
-      <b>ช่วงที่ไม่ได้รับสัญญาณรวม ${blindMin} นาที</b> (${blind.gaps.length} ช่วง)
-      — เส้นประบนแผนที่คือเส้นตรงระหว่างสองจุด ไม่ใช่เส้นทางจริง
-      ระยะทางช่วงนั้นไม่ถูกนับ<br>
-      สาเหตุที่พบบ่อยคือสลับไปแอปอื่นหรือล็อกหน้าจอระหว่างเดินทาง</span></div>` : ''}
+      <b>สัญญาณ GPS ขาดช่วงระหว่างเคลื่อนที่รวม ${blindMin} นาที</b> (${blind.gaps.length} ช่วง)
+      — เส้นตรงบนแผนที่คือการเชื่อมสองจุด ไม่ใช่เส้นทางจริง ระยะทางช่วงนั้นไม่ถูกนับ<br>
+      มักเกิดตอนผ่านอุโมงค์/อาคาร/พื้นที่อับสัญญาณ (ช่วงจอดนิ่งไม่นับเป็นสัญญาณขาด)</span></div>` : ''}
     <canvas class="route hide" id="rt"></canvas>
     <div class="lb" style="margin-top:6px">🟢 เริ่มงาน · 🔴 สิ้นสุด · 🔵 จุดปฏิบัติงาน · ⚪ สัญญาณขาด${
       t._pruned ? '<br>ภาพนี้ลดจุดลงเพื่อวาดให้เร็ว — เส้นทางเต็มอยู่บนระบบ' : ''}</div></div>`);
@@ -2667,20 +2707,29 @@ function splitByGaps(raw) {
     .filter(p => p.ll[0] != null && p.ll[1] != null);
 
   const segs = [], gaps = [];
-  let cur = [], blindSec = 0;
+  let cur = [], blindSec = 0, stationarySec = 0;
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i], prev = pts[i - 1];
     const gapSec = (prev && p.t && prev.t) ? (p.t - prev.t) / 1000 : 0;
     if (gapSec > CFG.gpsBlindGapSec) {
-      if (cur.length) segs.push(cur);
-      gaps.push({ from: prev.ll, to: p.ll, sec: gapSec });
-      blindSec += gapSec;
-      cur = [];
+      // เตือนเฉพาะเมื่อ "ระยะที่หายไป" มีนัยสำคัญ (ปลายสองจุดห่างกันมาก
+      // = ขยับไกลระหว่างที่ไม่มีจุด สัญญาณขาดจริงตอนวิ่ง เช่น อุโมงค์/พื้นที่อับ)
+      // ปลายใกล้กัน = จอดนิ่ง/รถติดคลาน เปลือกแอปไม่ส่งจุดเพราะขยับน้อย ไม่ใช่สัญญาณหลุด
+      const movedM = haversineM(prev.ll[0], prev.ll[1], p.ll[0], p.ll[1]);
+      if (movedM > 250) {
+        if (cur.length) segs.push(cur);
+        gaps.push({ from: prev.ll, to: p.ll, sec: gapSec });
+        blindSec += gapSec;
+        cur = [];
+      } else {
+        // จอดนิ่ง — ต่อเส้นตามปกติ ไม่ถือเป็นช่วงขาดสัญญาณ
+        stationarySec += gapSec;
+      }
     }
     cur.push(p.ll);
   }
   if (cur.length) segs.push(cur);
-  return { segs, gaps, blindSec, all: pts.map(p => p.ll) };
+  return { segs, gaps, blindSec, stationarySec, all: pts.map(p => p.ll) };
 }
 
 function renderMap(box, pts, stops) {
@@ -2831,9 +2880,9 @@ async function viewSessionDetail(sessionId) {
     <div class="sub">${pts.length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
     <div class="map" id="dmap"></div>
     ${blMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
-      <b>ช่วงที่ไม่ได้รับสัญญาณรวม ${blMin} นาที</b> (${bl.gaps.length} ช่วง)
-      — เส้นประคือเส้นตรงระหว่างสองจุด ไม่ใช่เส้นทางจริง
-      ระยะ GPS ที่เห็นจึงต่ำกว่าระยะที่วิ่งจริงในช่วงนั้น</span></div>` : ''}
+      <b>สัญญาณ GPS ขาดช่วงระหว่างเคลื่อนที่รวม ${blMin} นาที</b> (${bl.gaps.length} ช่วง)
+      — เส้นตรงคือการเชื่อมสองจุด ไม่ใช่เส้นทางจริง
+      ระยะ GPS ที่เห็นจึงต่ำกว่าระยะที่วิ่งจริงในช่วงนั้น (ช่วงจอดนิ่งไม่นับ)</span></div>` : ''}
     </div>`));
 
   nodes.push(el(`<div class="card"><h3>จุดปฏิบัติงาน ${(d.stops || []).length} จุด</h3>
