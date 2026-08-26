@@ -316,6 +316,14 @@ const LS = {
   del(k) { localStorage.removeItem('tl.' + k); },
 };
 
+/* ล้างแคชที่ผูกกับ "ตัวบุคคล" ออกจากเครื่อง — ใช้ตอนออกจากระบบ หรือสลับบัญชี
+   สำคัญมากเรื่อง PDPA: ถ้าไม่ล้าง คนถัดไปที่ล็อกอินบนเครื่องเดิมจะเห็น
+   ทริป/ประวัติ/ข้อมูลของคนก่อนหน้า (เคยหลุดข้ามคนมาแล้ว)
+   ไม่ล้าง: device (ผูกเครื่อง) · demo · url/key · lastCode/lastEmail · master (ข้อมูลกลาง) */
+function wipeUserCache() {
+  ['trip', 'lastTrip', 'bootstrap', 'useBackup'].forEach(k => LS.del(k));
+}
+
 /* รูปถ่ายเก็บใน IndexedDB เพราะ localStorage เล็กเกินไป */
 const IDB = {
   db: null,
@@ -763,7 +771,9 @@ function viewConsent() {
     e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
     const { error } = await sb.from('consents').insert({
       user_id: S.profile.id, version: CFG.consentVersion, device_label: navigator.userAgent.slice(0, 80) });
-    if (error) { e.target.disabled = false; return toast(friendly(error), 1); }
+    // ออนไลน์แล้ว error จริง = บล็อกให้ลองใหม่ · ออฟไลน์ = ให้ผ่านได้ (ใช้งานภาคสนามต่อ)
+    if (error && navigator.onLine) { e.target.disabled = false; return toast(friendly(error), 1); }
+    S.consentAck = true;   // ยืนยันแล้วในรอบนี้ — boot() จะผ่านหน้านี้ไปหน้าถัดไป
     boot();
   };
 }
@@ -1996,11 +2006,17 @@ function viewActive() {
   if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
   if (!tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
   nodes.push(el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
+  // ทริปที่ถูกกู้จากเซิร์ฟเวอร์ (ค้าง "กำลังทำงาน") — ปิดฉุกเฉินได้ ไม่ต้องถ่ายเลขไมล์
+  if (t._recovered) nodes.push(el(`<div class="note w" style="margin-top:4px">
+    <span>⚠</span><span>ทริปนี้ถูกกู้จากเซิร์ฟเวอร์ ถ้าคุณปิดงานนี้ไปแล้วแต่ระบบยังค้าง
+    ให้กด <b>ปิดงานที่ค้าง</b> ด้านล่าง</span></div>`),
+    el('<button class="link" id="forceend" style="color:var(--r)">ปิดงานที่ค้างนี้ (ฉุกเฉิน)</button>'));
 
   shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
   $('#addstop').onclick = () => viewStopForm();
   $('#addfuel').onclick = () => viewFuelForm();
   $('#end').onclick = () => viewTripEnd();
+  if ($('#forceend')) $('#forceend').onclick = () => closeStuckSession();
   if ($('#resume')) $('#resume').onclick = () => { startWatch(); go('active'); };
   document.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => {
     const s = t.stops.find(x => x.id === b.dataset.cls); askDwell(s.id, s.dwell_minutes || 0); });
@@ -2012,6 +2028,27 @@ function viewActive() {
     s._dirty = 1; saveTrip(); sync(); go('active');
   });
   if (S.pendingDwell) { const d = S.pendingDwell; S.pendingDwell = null; askDwell(d.id, d.mins); }
+}
+
+/* ปิดงานที่ค้าง "กำลังทำงาน" ที่เซิร์ฟเวอร์ (sql/31) — สำหรับทริปที่ถูกกู้มา
+   ใช้เมื่อผู้ใช้ปิดงานไปแล้วแต่ระบบยังค้าง เพราะ sync ปิดขึ้นเซิร์ฟเวอร์ไม่สำเร็จ */
+async function closeStuckSession() {
+  if (!await askConfirm('ปิดงานที่ค้าง',
+      'ระบบจะปิดงานนี้ให้จบทันที และคำนวณระยะทางจากพิกัดที่บันทึกไว้\n\n'
+      + 'ใช้เมื่อคุณปิดงานไปแล้วแต่ระบบยังแสดงว่ากำลังทำงานอยู่', 'ปิดงานที่ค้าง', true)) return;
+  loading('กำลังปิดงานที่ค้าง…');
+  try {
+    const { data, error } = await sb.rpc('close_my_active_session', { p_note: null });
+    if (error || data?.ok !== true) {
+      const code = { NO_ACTIVE: 'ไม่พบงานที่ค้างอยู่แล้ว', NO_AUTH: 'เซสชันหมดอายุ เข้าระบบใหม่' }[data?.code];
+      toast(code || ('ปิดไม่สำเร็จ: ' + (data?.code || error?.message || '')), 1, 6000);
+    } else {
+      toast('ปิดงานที่ค้างเรียบร้อยแล้ว');
+    }
+  } catch (e) { toast('ปิดไม่สำเร็จ: ' + (e?.message || e), 1, 6000); }
+  // ล้างสถานะในเครื่องแล้วโหลดใหม่จากเซิร์ฟเวอร์ ให้ตรงกัน
+  stopWatch(); LS.del('trip'); LS.del('lastTrip'); S.trip = null;
+  boot();
 }
 
 /* ---------------- แผ่นเลือกสาขา ---------------- */
@@ -2835,8 +2872,10 @@ async function viewHistory() {
       .eq('user_id', S.profile.id).order('start_at', { ascending: false }).limit(60);
     rows = data || [];
   } catch { toast('ดึงประวัติจากเซิร์ฟเวอร์ไม่ได้', 1); }
+  // แสดง lastTrip ที่ค้างในเครื่องเฉพาะของเจ้าของบัญชีนี้เท่านั้น (กันข้อมูลข้ามคน)
   const last = LS.get('lastTrip');
-  if (last && !rows.some(r => r.id === last.id)) rows.unshift({ ...last, start_at: last.startAt });
+  if (last && last.user_id === S.profile.id && !rows.some(r => r.id === last.id))
+    rows.unshift({ ...last, start_at: last.startAt });
 
   // จัดกลุ่มตามเดือน (MMM-YY เช่น Aug-26) แล้วแสดงแต่ละเดือนแยกกัน
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4138,7 +4177,8 @@ async function viewSettings() {
     if (S.pending && !await askConfirm('ยังมีข้อมูลค้างอยู่',
         `มี ${S.pending} รายการที่ยังไม่ได้ส่งขึ้นระบบ\nถ้าออกตอนนี้ต้องเข้าระบบด้วยเครื่องนี้อีกครั้งเพื่อส่งต่อ`,
         'ออกจากระบบ', true)) return;
-    stopWatch(); await sb.auth.signOut(); location.reload();
+    stopWatch(); wipeUserCache(); LS.del('uid');
+    await sb.auth.signOut(); location.reload();
   };
 }
 
@@ -4280,6 +4320,11 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { S.profile = null; return viewLogin(); }
 
+  // สลับบัญชีบนเครื่องเดียวกัน -> ล้างแคชของคนก่อนหน้า (กันข้อมูลรั่วข้ามคน / PDPA)
+  const prevUid = LS.get('uid');
+  if (prevUid && prevUid !== session.user.id) wipeUserCache();
+  LS.set('uid', session.user.id);
+
   // ผูกอุปกรณ์ (1 บัญชี = 1 เครื่อง)
   let devId = localStorage.getItem('tl.device');
   if (!devId) { devId = uuid(); localStorage.setItem('tl.device', devId); }
@@ -4287,6 +4332,7 @@ async function boot() {
     const { data: bind } = await sb.rpc('bind_device',
       { p_device_id: devId, p_label: navigator.userAgent.slice(0, 60) });
     if (bind && bind.ok !== true && bind.code === 'OTHER_DEVICE') {
+      wipeUserCache(); LS.del('uid');
       await sb.auth.signOut();
       $('#app').innerHTML = '';
       $('#app').append(el(`<div class="center"><div style="font-size:40px">📵</div>
@@ -4310,7 +4356,7 @@ async function boot() {
     bs = cached; S.online = false;
   }
   if (bs?.ok !== true) {
-    if (bs?.code === 'DISABLED') { await sb.auth.signOut();
+    if (bs?.code === 'DISABLED') { wipeUserCache(); LS.del('uid'); await sb.auth.signOut();
       return fatalNotice('บัญชีนี้ถูกปิดการใช้งาน',
         'กรุณาติดต่อผู้ดูแลระบบ (Admin) เพื่อเปิดการใช้งานอีกครั้ง'); }
     // ครั้งแรกที่ login ด้วยอีเมล — ผูกกับข้อมูล HR ให้ก่อน
@@ -4331,29 +4377,39 @@ async function boot() {
   if (!S.master) return;
 
   if (S.profile.must_change_pin) return viewSetPin();
-  if (!bs.has_consent) return viewConsent();
+  // แสดงหน้าความยินยอมทุกครั้งหลังเข้าสู่ระบบ/เปิดแอป (ตามนโยบาย PDPA)
+  // ใช้ธงในหน่วยความจำ S.consentAck กันไม่ให้วนซ้ำหลังกดยินยอมในรอบเดียวกัน
+  // (ธงรีเซ็ตทุกครั้งที่โหลดแอปใหม่ จึงขึ้นให้ยืนยันใหม่ทุกการเข้าใช้งาน)
+  if (!S.consentAck) return viewConsent();
   if (!S.profile.full_name || !S.profile.employee_code || !S.profile.cost_center_code)
     return viewProfile(true);
   if (!S.vehicles.length) return viewVehicle({});
 
-  // กู้ทริปที่ค้าง
+  // กู้ทริปที่ค้าง — เฉพาะทริปของบัญชีนี้เท่านั้น (กันปลุกทริปของคนอื่นบนเครื่องเดิม)
   const saved = LS.get('trip');
-  if (saved && saved.status === 'active') {
+  const lastT = LS.get('lastTrip');
+  if (saved && saved.status === 'active' && saved.user_id === S.profile.id) {
     S.trip = saved;
     S.dwellAnchor = null; S.dwellSince = Date.now(); S.dwellStopId = null;
     startWatch();
-  } else if (bs.active_session && !saved) {
-    // มีทริปเปิดอยู่ที่เซิร์ฟเวอร์แต่เครื่องนี้ไม่มีข้อมูล
+  } else if (bs.active_session && bs.active_session.user_id === S.profile.id) {
     const a = bs.active_session;
-    S.trip = { id: a.id, user_id: a.user_id, vehicle_id: a.vehicle_id, status: 'active',
-      startAt: a.start_at, start_lat: a.start_lat, start_lng: a.start_lng,
-      odo_start: a.odo_start, distM: a.gps_distance_m || 0,
-      points: [], stops: [], fuels: [], media: [], _counted: null };
-    const [{ data: sts }, { data: fus }] = await Promise.all([
-      sb.from('stops').select('*').eq('session_id', a.id).order('seq'),
-      sb.from('fuel_records').select('*').eq('session_id', a.id)]);
-    S.trip.stops = sts || []; S.trip.fuels = fus || [];
-    saveTrip(); startWatch();
+    // ผู้ใช้ปิดงานนี้ไปแล้วในเครื่อง แต่ยัง sync ปิดขึ้นเซิร์ฟเวอร์ไม่สำเร็จ
+    // -> อย่าปลุกกลับมาเป็น "กำลังทำงาน" ให้ปล่อย sync() ปิดงานให้จบแทน
+    if (lastT && lastT.id === a.id && lastT.status && lastT.status !== 'active') {
+      S.trip = null;
+    } else {
+      // ทริปเปิดจริงที่เซิร์ฟเวอร์แต่เครื่องนี้ไม่มีข้อมูล (เช่นลงแอปใหม่กลางทริป)
+      S.trip = { id: a.id, user_id: a.user_id, vehicle_id: a.vehicle_id, status: 'active',
+        startAt: a.start_at, start_lat: a.start_lat, start_lng: a.start_lng,
+        odo_start: a.odo_start, distM: a.gps_distance_m || 0,
+        points: [], stops: [], fuels: [], media: [], _counted: null, _recovered: true };
+      const [{ data: sts }, { data: fus }] = await Promise.all([
+        sb.from('stops').select('*').eq('session_id', a.id).order('seq'),
+        sb.from('fuel_records').select('*').eq('session_id', a.id)]);
+      S.trip.stops = sts || []; S.trip.fuels = fus || [];
+      saveTrip(); startWatch();
+    }
   }
 
   S.ready = true; countPending();
