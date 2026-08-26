@@ -1070,7 +1070,7 @@ async function viewBackupRequest() {
         รถ <span class="mono">${esc(p.plate)}</span> · ช่วง ${esc(p.from)} ถึง ${esc(p.to)}<br>
         ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน หรือดูสถานะที่แท็บ "คำขอ"</span></div>`),
       el('<button class="btn gh" id="bk2">ดูคำขอของฉัน</button>'),
-    ], { back: () => go('home'), tabs: true, actions: false }),
+    ], { back: () => go('requests'), tabs: true, actions: false }),
       ($('#bk2').onclick = () => go('requests'));
   }
   if (st?.show_module) {
@@ -1079,7 +1079,7 @@ async function viewBackupRequest() {
         <span class="mono">${esc(st.vehicle.plate)}</span> ใช้ได้ถึง ${esc(st.vehicle.use_to)}
         (อีก ${st.vehicle.days_left} วัน)<br>
         ยื่นคำขอใหม่ได้เมื่อคันนี้พ้นกำหนดแล้ว</span></div>`),
-    ], { back: () => go('home'), tabs: true, actions: false });
+    ], { back: () => go('requests'), tabs: true, actions: false });
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -3178,7 +3178,7 @@ async function viewRequests(opts = {}) {
         คุณยังไม่มีรถทดแทนที่ใช้งานอยู่ — ต้องยื่น <b>"ใช้รถทดแทนชั่วคราว"</b>
         และหัวหน้าอนุมัติก่อน จึงจะกดต่ออายุได้</span></div>`));
       nodes.push(el(`<button class="btn" id="goreplace">ไปยื่นขอใช้รถทดแทนชั่วคราว</button>`));
-      shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('home') });
+      shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('requests') });
       document.querySelectorAll('[data-t]').forEach(node => node.onclick = () => {
         if (node.dataset.t === 'vehicle_replace') return go('backup');
         if (node.dataset.t === 'plate') return go('platechange');
@@ -3231,7 +3231,7 @@ async function viewRequests(opts = {}) {
         ${r.status === 'pending' ? `<button class="link" data-cancel="${r.id}" style="padding:6px 0 0;color:var(--r)">ยกเลิกคำขอนี้</button>` : ''}
       </div></div>`).join('')}</div></div>`));
 
-    shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('home') });
+    shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('requests') });
     document.querySelectorAll('[data-t]').forEach(n => n.onclick = () => {
       // 2 ประเภทนี้มีหน้าเฉพาะของตัวเอง ไม่ใช้ฟอร์มกลาง
       if (n.dataset.t === 'vehicle_replace') return go('backup');
