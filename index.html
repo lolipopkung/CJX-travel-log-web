@@ -3980,9 +3980,23 @@ async function loadDash() {
 function rangeLabel() {
   return `${dDate(DASH.from)} – ${dDate(DASH.to)}`;
 }
-function fileTag() {
-  return `${DASH.from}_${DASH.to}${DASH.cc ? '_' + DASH.cc : ''}${DASH.emp ? '_' + DASH.emp : ''}`
-    .replace(/[^\w.\-]+/g, '');
+// YYYY-MM-DD -> DDMMYY (พ.ศ.สองหลักไม่ใช้ ใช้ค.ศ.สองหลักตามตัวอย่าง 010826)
+function ddmmyy(s) { const [y, m, d] = s.split('-'); return d + m + y.slice(2); }
+
+// ชื่อไฟล์รายงาน: รหัส_ชื่อต้น_โมดูล_ddmmyy-ddmmyy
+// ถ้าเป็นพนักงานคนเดียว ใช้รหัส+ชื่อต้นจากข้อมูลจริง · หลายคน = "หลายคน" · ไม่มีข้อมูล = "ทุกคน"
+function reportFileName(moduleLabel, rows) {
+  const period = `${ddmmyy(DASH.from)}-${ddmmyy(DASH.to)}`;
+  const codes = [...new Set((rows || []).map(r => r.employee_code).filter(Boolean))];
+  let who;
+  if (codes.length === 1) {
+    const first = ((rows.find(r => r.employee_code === codes[0]) || {}).full_name || '')
+      .trim().split(/\s+/)[0] || '';
+    who = codes[0] + (first ? '_' + first : '');
+  } else {
+    who = codes.length ? 'หลายคน' : (DASH.emp || 'ทุกคน');
+  }
+  return `${who}_${moduleLabel}_${period}`;
 }
 
 function renderOverview(d) {
@@ -4074,10 +4088,10 @@ function stopCols() {
     { h: 'เข้า', v: r => dDT(r.arrive_at) },
     { h: 'ออก', v: r => r.depart_at ? dDT(r.depart_at) : '' },
     { h: 'อยู่ (นาที)', v: r => r.dwell_minutes ?? '' },
-    { h: 'ที่มา', v: r => r.source === 'auto_dwell' ? 'ระบบจับ' : 'พนักงานเพิ่ม' },
     { h: 'ออกนอกเส้นทาง', v: r => r.off_route ? 'ใช่' : '' },
     { h: 'หมายเหตุ', v: r => r.note || '' },
-    { h: 'พิกัด', v: r => (r.lat != null && r.lng != null) ? `${r.lat},${r.lng}` : '' },
+    { h: 'Latitude', v: r => r.lat ?? '' },
+    { h: 'Longitude', v: r => r.lng ?? '' },
   ];
 }
 function renderStops(rows) {
@@ -4135,7 +4149,7 @@ function exportBar(kind, n) {
     <button class="btn gh" id="xcsv" style="width:auto;padding:8px 12px">📄 CSV</button></div>`;
 }
 function wireExport(kind, label, cols, rows) {
-  const base = `CJx_${label}_${fileTag()}`;
+  const base = reportFileName(label, rows);
   const ex = $('#xexcel'), cv = $('#xcsv');
   if (ex) ex.onclick = () => {
     if (!rows.length) return toast('ไม่มีข้อมูลให้ส่งออก', 1);
