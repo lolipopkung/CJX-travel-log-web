@@ -321,7 +321,7 @@ const LS = {
    ทริป/ประวัติ/ข้อมูลของคนก่อนหน้า (เคยหลุดข้ามคนมาแล้ว)
    ไม่ล้าง: device (ผูกเครื่อง) · demo · url/key · lastCode/lastEmail · master (ข้อมูลกลาง) */
 function wipeUserCache() {
-  ['trip', 'lastTrip', 'bootstrap', 'useBackup'].forEach(k => LS.del(k));
+  ['trip', 'lastTrip', 'bootstrap', 'useBackup', 'consented'].forEach(k => LS.del(k));
 }
 
 /* รูปถ่ายเก็บใน IndexedDB เพราะ localStorage เล็กเกินไป */
@@ -647,6 +647,7 @@ function viewLogin() {
       return;
     }
     localStorage.setItem('tl.lastCode', code);
+    LS.del('consented');   // login ใหม่ -> ให้หน้ายินยอมขึ้น 1 ครั้งหลังเข้าระบบ
     boot();
   };
 
@@ -773,7 +774,7 @@ function viewConsent() {
       user_id: S.profile.id, version: CFG.consentVersion, device_label: navigator.userAgent.slice(0, 80) });
     // ออนไลน์แล้ว error จริง = บล็อกให้ลองใหม่ · ออฟไลน์ = ให้ผ่านได้ (ใช้งานภาคสนามต่อ)
     if (error && navigator.onLine) { e.target.disabled = false; return toast(friendly(error), 1); }
-    S.consentAck = true;   // ยืนยันแล้วในรอบนี้ — boot() จะผ่านหน้านี้ไปหน้าถัดไป
+    LS.set('consented', S.profile.id);   // ยินยอมแล้วสำหรับ login นี้ — boot() จะผ่านไปหน้าถัดไป ไม่เด้งซ้ำ
     boot();
   };
 }
@@ -4426,10 +4427,10 @@ async function boot() {
   if (!S.master) return;
 
   if (S.profile.must_change_pin) return viewSetPin();
-  // แสดงหน้าความยินยอมทุกครั้งหลังเข้าสู่ระบบ/เปิดแอป (ตามนโยบาย PDPA)
-  // ใช้ธงในหน่วยความจำ S.consentAck กันไม่ให้วนซ้ำหลังกดยินยอมในรอบเดียวกัน
-  // (ธงรีเซ็ตทุกครั้งที่โหลดแอปใหม่ จึงขึ้นให้ยืนยันใหม่ทุกการเข้าใช้งาน)
-  if (!S.consentAck) return viewConsent();
+  // แสดงหน้าความยินยอม 1 ครั้งต่อการ "login จริง" (ตามนโยบาย PDPA)
+  // เก็บธงเป็น uid ที่ยินยอมแล้วใน localStorage — คงอยู่ข้าม boot()/รีโหลด/เปิดแอปซ้ำ
+  // จึงไม่เด้งซ้ำระหว่าง onboarding หรือก่อนเริ่มงาน · login ใหม่จะล้างธง (ดู viewLogin) ให้ขึ้นอีก
+  if (LS.get('consented') !== session.user.id) return viewConsent();
   if (!S.profile.full_name || !S.profile.employee_code || !S.profile.cost_center_code)
     return viewProfile(true);
   if (!S.vehicles.length) return viewVehicle({});
