@@ -3178,7 +3178,7 @@ async function viewRequests(opts = {}) {
         คุณยังไม่มีรถทดแทนที่ใช้งานอยู่ — ต้องยื่น <b>"ใช้รถทดแทนชั่วคราว"</b>
         และหัวหน้าอนุมัติก่อน จึงจะกดต่ออายุได้</span></div>`));
       nodes.push(el(`<button class="btn" id="goreplace">ไปยื่นขอใช้รถทดแทนชั่วคราว</button>`));
-      shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
+      shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('home') });
       document.querySelectorAll('[data-t]').forEach(node => node.onclick = () => {
         if (node.dataset.t === 'vehicle_replace') return go('backup');
         if (node.dataset.t === 'plate') return go('platechange');
@@ -3231,7 +3231,7 @@ async function viewRequests(opts = {}) {
         ${r.status === 'pending' ? `<button class="link" data-cancel="${r.id}" style="padding:6px 0 0;color:var(--r)">ยกเลิกคำขอนี้</button>` : ''}
       </div></div>`).join('')}</div></div>`));
 
-    shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true });
+    shell('แจ้งเปลี่ยนแปลงข้อมูล', nodes, { tabs: true, back: () => go('home') });
     document.querySelectorAll('[data-t]').forEach(n => n.onclick = () => {
       // 2 ประเภทนี้มีหน้าเฉพาะของตัวเอง ไม่ใช้ฟอร์มกลาง
       if (n.dataset.t === 'vehicle_replace') return go('backup');
@@ -3707,6 +3707,22 @@ async function createOne(codeRaw, target, silent) {
   return r;
 }
 
+/* หมายเหตุการแจ้ง PIN — ต่างกันตามว่าพนักงานมีอีเมลหรือไม่
+   มีอีเมล = PIN สุ่ม ต้องแจ้งทางอีเมล (ระบบส่งอัตโนมัติยังไม่เปิด แจ้งเองไปก่อน)
+   ไม่มีอีเมล = PIN เริ่มต้น 111111 แจ้งด้วยตนเอง */
+function pinDeliveryNote(r) {
+  if (r.default_pin || r.has_email === false) {
+    return `<div class="note i"><span>👤</span><span>พนักงานคนนี้<b>ไม่มีอีเมล</b>ในระบบ —
+      PIN เริ่มต้นคือ <b>111111</b> แจ้งด้วยตนเอง (ระบบบังคับให้ตั้ง PIN ใหม่ตอนเข้าครั้งแรก)</span></div>`;
+  }
+  if (r.has_email && r.contact_email) {
+    return `<div class="note i"><span>✉️</span><span>แจ้ง PIN นี้ให้พนักงานทางอีเมล
+      <b>${esc(r.contact_email)}</b><br>(ระบบส่งอีเมลอัตโนมัติยังไม่เปิด — แจ้งเองไปก่อน
+      ดูรายการที่ต้องแจ้งได้ที่ <b>รายงานการออก PIN</b>)</span></div>`;
+  }
+  return '';
+}
+
 /* กล่อง PIN กลางจอ — ค้างไว้จนกด "เสร็จแล้ว" เพราะ PIN โชว์ครั้งเดียว
    ต้องให้ Admin จดหรือคัดลอกก่อนปิด ไม่ใช่แวบหายเอง */
 function showPinDialog(r) {
@@ -3718,8 +3734,10 @@ function showPinDialog(r) {
       <div class="lb mono">${esc(r.employee_code)}</div></div>
     <div class="mono" style="font-size:38px;font-weight:800;letter-spacing:9px;
       text-align:center;margin:14px 0;color:var(--ink)">${esc(r.pin)}</div>
-    <div class="note w"><span>⏳</span><span>PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้
-      ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที</span></div>
+    ${pinDeliveryNote(r)}
+    <div class="note w"><span>⏳</span><span>${r.default_pin
+      ? 'PIN เริ่มต้น 111111 — พนักงานต้องตั้ง PIN ของตัวเองทันทีที่เข้าครั้งแรก'
+      : 'PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้ ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที'}</span></div>
     <button class="btn" id="pincopy">📋 คัดลอก PIN</button>
     <button class="btn gh" id="pindone">เสร็จแล้ว (จด PIN เรียบร้อย)</button></div>`);
   overlay(d);
@@ -3738,8 +3756,10 @@ function pinCardHtml(r) {
     <div class="lb mono">${esc(r.employee_code)}</div>
     <div class="mono" style="font-size:31px;font-weight:800;letter-spacing:7px;
       text-align:center;margin:11px 0">${esc(r.pin)}</div>
-    <div class="note w"><span>⏳</span><span>PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้
-      ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที</span></div>
+    ${pinDeliveryNote(r)}
+    <div class="note w"><span>⏳</span><span>${r.default_pin
+      ? 'PIN เริ่มต้น 111111 — พนักงานต้องตั้ง PIN ของตัวเองทันทีที่เข้าครั้งแรก'
+      : 'PIN นี้แสดงครั้งเดียว ไม่มีที่ไหนเก็บไว้ ใช้เข้าได้ครั้งเดียวภายใน 7 วัน แล้วพนักงานต้องตั้ง PIN ของตัวเองทันที'}</span></div>
   </div>`;
 }
 
@@ -3818,6 +3838,9 @@ async function viewAdmin() {
     el(`<div class="card"><h3>บัญชีผู้ใช้</h3>
       <div class="sub">สร้างบัญชีให้พนักงาน · ตั้งสิทธิ์ Admin · ปิด-เปิดการใช้งาน</div>
       <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
+    ...(S.profile.role === 'superadmin' ? [el(`<div class="card"><h3>รายงานการออก PIN</h3>
+      <div class="sub">ดูว่าออก user+PIN ให้ใครแล้ว · ใครมีอีเมล/ไม่มี · เข้าใช้ครั้งแรกแล้วยัง — ใช้ตามรายการนี้แจ้ง PIN ให้พนักงาน</div>
+      <button class="btn gh" id="gopinrep" style="margin-top:10px">🔑 เปิดรายงานการออก PIN</button></div>`)] : []),
     el('<div id="pfbox"></div>'),
     el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
     el(`<div class="note i"><span>💻</span><span>ได้ไฟล์รายชื่อพนักงานชุดใหม่ → อัปเดตจากเครื่องคอมพิวเตอร์ (ลองก่อนด้วย <b>--dry-run</b>)<br>
@@ -3845,6 +3868,7 @@ async function viewAdmin() {
   })();
 
   $('#gousers').onclick = () => go('users');
+  if ($('#gopinrep')) $('#gopinrep').onclick = () => go('pinreport');
 
   $('#chk').onclick = async () => {
     const code = $('#ac').value.trim().toUpperCase();
@@ -4335,6 +4359,72 @@ function wireExport(kind, label, cols, rows) {
   };
 }
 
+/* รายงานการออก PIN (เฉพาะ superadmin) — ดูว่าออก user+PIN ให้ใครแล้ว
+   จะได้ตามไปแจ้ง PIN ให้พนักงานรายคน · ไม่โชว์ PIN ของคนมีอีเมล (ความปลอดภัย) */
+const PINREP = { rows: [], q: '' };
+function pinReportCols() {
+  return [
+    { h: 'ชื่อ', v: r => r.full_name || '' },
+    { h: 'รหัสพนักงาน', v: r => r.employee_code || '' },
+    { h: 'Cost center', v: r => r.cost_center_code || '' },
+    { h: 'อีเมลพนักงาน', v: r => r.contact_email || 'ไม่มีอีเมล' },
+    { h: 'PIN', v: r => r.default_pin ? r.default_pin : 'ส่งทางอีเมล (ไม่แสดง)' },
+    { h: 'ช่องทางแจ้ง', v: r => r.has_email ? 'อีเมล' : 'แจ้งด้วยตนเอง' },
+    { h: 'ออก PIN เมื่อ', v: r => r.pin_issued_at ? dDT(r.pin_issued_at) : '' },
+    { h: 'ออกโดย', v: r => r.issued_by || '' },
+    { h: 'สถานะ', v: r => r.status || '' },
+  ];
+}
+async function viewPinReport() {
+  loading('กำลังโหลดรายงานการออก PIN…');
+  try {
+    const { data, error } = await sb.rpc('admin_pin_report', { p_search: PINREP.q || null });
+    if (error || data?.ok !== true) throw error || new Error(data?.code || 'โหลดไม่ได้');
+    PINREP.rows = data.rows || [];
+  } catch (e) {
+    return shell('รายงานการออก PIN', [el(`<div class="note e"><span>⚠</span><span>${
+      /NOT_SUPERADMIN/.test(String(e?.message || e)) ? 'เฉพาะ superadmin เท่านั้น'
+        : 'โหลดไม่ได้: ' + esc(String(e?.message || e)) + ' — รัน sql/40_pin_report.sql แล้วหรือยัง'}</span></div>`)],
+      { back: () => go('admin') });
+  }
+
+  const rows = PINREP.rows;
+  const nEmail = rows.filter(r => r.has_email).length;
+  const nNoEmail = rows.length - nEmail;
+  const nPending = rows.filter(r => !r.used).length;
+  const cols = pinReportCols();
+
+  const nodes = [
+    el(`<div class="card"><h3>🔑 รายงานการออก PIN</h3>
+      <div class="sub">ออก user+PIN ให้แล้ว ${ni(rows.length)} คน · มีอีเมล ${ni(nEmail)} · ไม่มีอีเมล ${ni(nNoEmail)} (PIN 111111) · ยังไม่เข้าใช้ ${ni(nPending)}</div>
+      <div class="note i" style="margin-top:8px"><span>🔒</span><span>PIN ของคนมีอีเมลไม่แสดงในรายงาน (สุ่มให้แต่ละคน เก็บเป็น hash เท่านั้น)
+        — แจ้งพนักงานทางอีเมลที่ระบุ · ส่วนคนไม่มีอีเมลใช้ PIN เริ่มต้น <b>111111</b> แจ้งด้วยตนเอง</span></div>
+      <label class="f" style="margin-top:10px"><span>ค้นหา ชื่อ / รหัสพนักงาน</span>
+        <input id="pq" placeholder="พิมพ์เพื่อค้นหา" value="${esc(PINREP.q)}"></label></div>`),
+    el(`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 2px 9px">
+      <div class="lb" style="flex:1">พบ ${ni(rows.length)} รายการ</div>
+      <button class="btn gh" id="pxe" style="width:auto;padding:8px 12px">📗 Excel</button>
+      <button class="btn gh" id="pxc" style="width:auto;padding:8px 12px">📄 CSV</button></div>`),
+    el(`<div>${dataTable(cols, rows, (c, r) => {
+      if (c.h === 'PIN' && r.default_pin) return `<b>${esc(r.default_pin)}</b>`;
+      if (c.h === 'สถานะ') return r.used
+        ? '<span class="pill g">เข้าใช้แล้ว</span>' : '<span class="pill w">รอเข้าใช้</span>';
+      return esc(c.v(r));
+    })}</div>`),
+  ];
+  shell('รายงานการออก PIN', nodes, { back: () => go('admin') });
+
+  const fname = 'รายงานการออกPIN_' + ymdCompact(new Date());
+  $('#pxe').onclick = () => rows.length ? (exportXLS(fname, 'ออก PIN', cols, rows), toast('ดาวน์โหลด Excel แล้ว')) : toast('ไม่มีข้อมูล', 1);
+  $('#pxc').onclick = () => rows.length ? (exportCSV(fname, cols, rows), toast('ดาวน์โหลด CSV แล้ว')) : toast('ไม่มีข้อมูล', 1);
+  let t;
+  $('#pq').oninput = e => { clearTimeout(t); PINREP.q = e.target.value.trim(); t = setTimeout(viewPinReport, 350); };
+}
+function ymdCompact(d) {
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + p(d.getMonth() + 1) + String(d.getFullYear()).slice(2);
+}
+
 /* พนักงานขอแก้ไขข้อมูลส่วนตัว — ส่งหา Admin ไม่แก้เอง (sql/25_profile_edit_request.sql)
    ยึดตามไฟล์ HR ที่ Admin อัปโหลด ถ้าผิดให้ Admin ตรวจแล้วแก้ที่ต้นทาง */
 function askProfileEdit() {
@@ -4404,10 +4494,6 @@ async function viewSettings() {
       <div class="sub">ดูว่ามีบันทึกการเดินทางที่ยังไม่ปิด หรือยังส่งขึ้นระบบไม่ครบไหม · ปิดงานที่ค้างได้เอง</div>
       <button class="btn gh" id="gosync" style="margin-top:10px">🔄 ดูสถานะการซิงค์</button></div>`),
     // คำขอย้ายไปแถบล่างแล้ว · ความเป็นส่วนตัวย้ายไปหน้าหลักแล้ว
-    el(`<div class="card"><h3>ข้อจำกัดของเว็บแอป</h3>
-      <div class="sub" style="margin:6px 0 0">เบราว์เซอร์จะหยุดส่งพิกัดถ้าปิดแท็บหรือล็อกหน้าจอไว้นาน
-      ระหว่างเดินทางให้เปิดแอปค้างไว้ (แอปขอไม่ให้จอดับให้อัตโนมัติเท่าที่เครื่องรองรับ)
-      ถ้าต้องการติดตามต่อเนื่องแม้พับหน้าจอ ต้องใช้เวอร์ชัน .apk</div></div>`),
     el('<button class="btn stop" id="out">ออกจากระบบ</button>'),
     el(`<div class="lb" style="text-align:center">${CFG.appName} · เว็บแอป 1.0</div>`),
   ];
@@ -4616,7 +4702,7 @@ function go(v, opts) {
     backup: viewBackupRequest, platechange: viewPlateChange,
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
-    syncstatus: viewSyncStatus,
+    syncstatus: viewSyncStatus, pinreport: viewPinReport,
   };
   (map[v] || viewHome)();
 }
