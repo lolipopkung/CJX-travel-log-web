@@ -1,0 +1,50 @@
+name: cjx_triplog
+description: "CJx Travel Log — เปลือกแอป Android ครอบเว็บแอป + เก็บ GPS เบื้องหลัง"
+publish_to: "none"
+version: 2.0.0+2
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # หน้าจอทั้งหมดมาจากเว็บแอป เปลือกนี้แค่แสดงผล
+  #
+  webview_flutter: ^4.10.0
+  # โค้ดใช้ AndroidWebViewController จึงต้องประกาศตรง ๆ
+  # ^4.0.0 ครอบคลุมทั้งช่วง 4.x ที่ webview_flutter รุ่นใหม่ต้องการ
+  # (เดิมตรึง ^3.16.0 แล้วชนกับ webview_flutter 4.13+ build ล้ม 24 ส.ค. 2569)
+  webview_flutter_android: ^4.0.0
+
+  # หน้าที่เดียวที่เว็บทำเองไม่ได้ — เก็บพิกัดต่อแม้ล็อกหน้าจอ
+  geolocator: ^13.0.2
+
+  # ขอสิทธิ์ "ตำแหน่งตลอดเวลา" ซึ่ง Android 10+ แยกจากสิทธิ์ปกติ
+  permission_handler: ^11.3.1
+
+  # เปิดกล้องให้ WebView — บังคับถ่ายสด เลือกจากอัลบั้มไม่ได้เลย (เฉพาะช่องรูป)
+  image_picker: ^1.1.2
+
+  # ตัวเลือกไฟล์เอกสาร — ช่องแนบไฟล์ที่ไม่ใช่รูป (เช่น .txt/.csv ตอน create user batch)
+  # ต้องแยกจากกล้อง ไม่งั้นกดแนบไฟล์แล้วเด้งกล้องผิด
+  file_picker: ^8.1.6
+
+  # เปิดลิงก์ภายนอก (เช่น Google Maps จากรายงาน) ในแอปภายนอก
+  # ไม่งั้น WebView จะพยายามเปิดเองแล้วเจอ ERR_UNKNOWN_URL_SCHEME (maps redirect เป็น intent://)
+  url_launcher: ^6.3.1
+
+  # export รายงานจาก Dashboard — WebView ดาวน์โหลดไฟล์เอง (a[download]) ไม่ได้
+  # เว็บจึงส่งเนื้อไฟล์ (base64) ผ่าน bridge มาให้เปลือกเขียนไฟล์แล้วเปิด
+  # เมนูแชร์/บันทึก ให้ผู้ใช้เลือกเซฟลง Files / Drive / ส่งอีเมล-ไลน์ได้
+  path_provider: ^2.1.4
+  share_plus: ^10.1.4
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png

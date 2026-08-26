@@ -1,0 +1,81 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader("UTF-8") { reader -> localProperties.load(reader) }
+}
+
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
+
+// ลงลายเซ็น release ด้วย keystore จริงถ้ามี (ตั้งผ่าน env ใน GitHub Actions)
+// ถ้าไม่มี → ใช้ debug key เพื่อให้ build ผ่านและติดตั้งทดลองได้
+def ksPath = System.getenv("KEYSTORE_PATH")
+def hasKeystore = ksPath != null && !ksPath.isEmpty() && file(ksPath).exists()
+
+android {
+    namespace = "co.th.cjmart.cjx_triplog"
+    compileSdk = 36
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        // flutter_local_notifications 17.x ใช้ API ของ java.time ซึ่ง Android เก่ายังไม่มี
+        // ต้องเปิด desugaring ไม่งั้น build ล้มด้วยข้อความ
+        //   "Dependency ':flutter_local_notifications' requires core library desugaring"
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        applicationId = "co.th.cjmart.cjx_triplog"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = flutterVersionCode.toInteger()
+        versionName = flutterVersionName
+        multiDexEnabled = true
+    }
+
+    signingConfigs {
+        release {
+            if (hasKeystore) {
+                storeFile file(ksPath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = hasKeystore ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled = false
+            shrinkResources = false
+        }
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    // คู่กับ coreLibraryDesugaringEnabled ข้างบน — ต้องมีทั้งคู่ ขาดตัวใดตัวหนึ่งก็ล้ม
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
+}

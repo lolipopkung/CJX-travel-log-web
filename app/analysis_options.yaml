@@ -1,0 +1,12 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # ใช้ withOpacity อยู่เพื่อให้ build ได้กับ Flutter หลายเวอร์ชัน
+    deprecated_member_use: ignore
+    deprecated_member_use_from_same_package: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: false
+    avoid_print: true
