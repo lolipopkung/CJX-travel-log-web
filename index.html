@@ -1942,9 +1942,13 @@ function viewTripStart(pos) {
         r.data.confidence || '-'} — ถ้าอ่านผิดให้ถ่ายรูปใหม่ ไม่ใช่แก้ตัวเลข`;
       checkStartOdo();
     } else if (r.status === 'unreadable') {
-      // ภาพไม่ชัดพอให้ AI อ่านได้ -> ไม่ให้บันทึก ต้องถ่ายใหม่
-      $('#odo').value = '';
-      showUnclear('op', 'ohint');
+      // AI อ่านเลขจากรูปไม่ได้ -> ไม่บังคับถ่ายใหม่จนติดตาย ให้กรอกเองได้
+      // (รูปถูกเก็บเป็นหลักฐาน หัวหน้าตรวจเทียบรูปได้ในหน้ารายละเอียด)
+      photoOk = true;
+      $('#odo').readOnly = false;
+      $('#ohint').innerHTML = '<b style="color:var(--warn)">AI อ่านเลขจากรูปนี้ไม่ได้</b>'
+        + ' — ถ้ารูปเบลอ/ย้อนแสง แนะนำถ่ายใหม่ให้ชัด หรือ<b>กรอกเลขไมล์เอง</b>'
+        + ' (รูปถูกบันทึกไว้แล้ว หัวหน้าจะตรวจเทียบกับรูป)';
     } else {
       photoOk = true;                 // บริการอ่านรูปใช้ไม่ได้ตอนนี้ ให้กรอกเอง
       $('#ohint').innerHTML = '<b style="color:var(--warn)">ยังตรวจรูปอัตโนมัติไม่ได้</b>' +
@@ -2584,8 +2588,12 @@ function viewTripEnd() {
         r.data.confidence || '-'} — ถ้าอ่านผิดให้ถ่ายรูปใหม่ ไม่ใช่แก้ตัวเลข`;
       checkOdo();
     } else if (r.status === 'unreadable') {
-      $('#odo').value = ''; $('#warn').innerHTML = '';
-      showUnclear('ep', 'eh');
+      // AI อ่านไม่ได้ -> ให้กรอกเอง (รูปถูกเก็บ หัวหน้าตรวจเทียบรูปได้)
+      photoOk = true;
+      $('#warn').innerHTML = '';
+      $('#eh').innerHTML = '<b style="color:var(--warn)">AI อ่านเลขจากรูปนี้ไม่ได้</b>'
+        + ' — ถ้ารูปเบลอ/ย้อนแสง แนะนำถ่ายใหม่ให้ชัด หรือ<b>กรอกเลขไมล์เอง</b>'
+        + ' (รูปถูกบันทึกไว้แล้ว หัวหน้าจะตรวจเทียบกับรูป)';
     } else {
       photoOk = true;
       $('#eh').innerHTML = '<b style="color:var(--warn)">ยังตรวจรูปอัตโนมัติไม่ได้</b>' +
@@ -2911,6 +2919,43 @@ async function viewSessionDetail(sessionId) {
     nodes.push(el(`<div class="note w"><span>🌙</span><span>
       ทริปนี้ระบบปิดให้อัตโนมัติ พนักงานไม่ได้กดปิดเอง</span></div>`));
   }
+
+  // --- ตรวจเลขไมล์ที่กรอก เทียบกับรูปหน้าปัด (สำหรับหัวหน้า/Admin) ---
+  const odoDefs = [
+    { label: 'เลขไมล์ต้นทาง', typed: w.odo_start, ai: w.odo_start_ai, kind: 'odo_start' },
+    { label: 'เลขไมล์ปลายทาง', typed: w.odo_end, ai: w.odo_end_ai, kind: 'odo_end' },
+  ];
+  const odoMedia = d.odo_media || [];
+  const odoCards = [];
+  for (const o of odoDefs) {
+    if (o.typed == null && o.ai == null && !odoMedia.some(x => x.kind === o.kind)) continue;
+    const m = odoMedia.find(x => x.kind === o.kind);
+    let url = null;
+    if (m?.path) {
+      try { const { data: su } = await sb.storage.from(CFG.bucket).createSignedUrl(m.path, 600);
+        url = su?.signedUrl || null; } catch {}
+    }
+    const aiVal = o.ai != null ? o.ai : (m?.ai?.odometer_km ?? null);
+    const match = (o.typed != null && aiVal != null) ? (Number(o.typed) === Number(aiVal)) : null;
+    const badge = match === true ? '<span class="pill g">✅ ตรงกับรูป</span>'
+      : match === false ? '<span class="pill e">🚩 ไม่ตรงกับรูป</span>'
+      : '<span class="pill n">AI อ่านไม่ได้ — ดูจากรูป</span>';
+    odoCards.push(`<div style="border-top:1px solid #EEF0F3;padding:11px 0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1"><div class="lb">${o.label}</div>
+          <div class="vl" style="font-size:16px">${o.typed != null ? ni(o.typed) : '—'}
+            <span class="lb">กม. (พนักงานกรอก)</span></div>
+          <div class="lb">AI อ่านจากรูป: ${aiVal != null ? ni(aiVal) : '—'}</div></div>
+        ${badge}</div>
+      ${url ? `<a href="${esc(url)}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'}>
+        <img src="${esc(url)}" alt="รูปเลขไมล์" loading="lazy"
+          style="width:100%;max-height:230px;object-fit:contain;border-radius:10px;margin-top:8px;background:#111"></a>`
+        : '<div class="lb" style="margin-top:6px">— ไม่มีรูปหน้าปัด —</div>'}</div>`);
+  }
+  if (odoCards.length) nodes.push(el(`<div class="card"><h3>ตรวจเลขไมล์กับรูปหน้าปัด</h3>
+    <div class="sub">แตะรูปเพื่อดูเต็ม · <b>"ตรงกับรูป"</b> = เลขที่พนักงานกรอกตรงกับที่ AI อ่านได้ตอนถ่าย
+      (ระบบบังคับให้ตรงตั้งแต่ถ่าย ถ้าขึ้น "ไม่ตรง" แปลว่ามีการแก้ภายหลัง ควรตรวจสอบ)</div>
+    ${odoCards.join('')}</div>`));
 
   const bl = splitByGaps(pts);
   const blMin = Math.round(bl.blindSec / 60);
