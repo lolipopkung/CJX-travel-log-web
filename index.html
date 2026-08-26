@@ -2870,7 +2870,8 @@ function drawRoute(cv, t) {
 
 /* หัวหน้า (หรือเจ้าตัว/Admin) เปิดดูรายละเอียดทริปจากกล่องแจ้งเตือน
    ตรวจสิทธิ์ที่ฝั่งฐานข้อมูลใน session_detail() ไม่ใช่ที่หน้าจอ */
-async function viewSessionDetail(sessionId) {
+async function viewSessionDetail(sessionId, opts = {}) {
+  const back = opts.back || (() => go('alerts'));
   loading('กำลังโหลดรายละเอียดการเดินทาง…');
   let d = null;
   try {
@@ -2880,12 +2881,12 @@ async function viewSessionDetail(sessionId) {
     return shell('รายละเอียดการเดินทาง',
       [el(`<div class="note e"><span>⚠</span><span>โหลดไม่ได้: ${esc(String(e?.message || e))}
         <br>ยังไม่ได้รัน sql/23_trip_alerts.sql หรือเปล่า</span></div>`)],
-      { back: () => go('alerts') });
+      { back });
   }
   if (d?.ok !== true) {
     return shell('รายละเอียดการเดินทาง', [el(`<div class="note e"><span>🔒</span><span>${
       d?.code === 'NOT_ALLOWED' ? 'คุณไม่มีสิทธิ์ดูทริปนี้' : 'ไม่พบทริปนี้'}</span></div>`)],
-      { back: () => go('alerts') });
+      { back });
   }
 
   const w = d.session || {}, own = d.owner || {};
@@ -2985,11 +2986,39 @@ async function viewSessionDetail(sessionId) {
           f.station_name ? ' · ' + esc(f.station_name) : ''}</div></div></div>`).join('')}</div></div>`));
   }
 
-  shell('รายละเอียดการเดินทาง', nodes, { back: () => go('alerts') });
+  // superadmin: ลบทริปที่ error ของ user คนใดก็ได้ (ลบจริง + ลบรูป + บันทึก audit)
+  if (S.profile.role === 'superadmin') {
+    nodes.push(el(`<div class="card" style="border:1px solid #F3C2C2">
+      <h3 style="color:var(--r)">ลบบันทึกการปฏิบัติงานนี้</h3>
+      <div class="sub">ใช้เมื่อทริปนี้ผิดพลาด (เช่น GPS เพี้ยน ทดสอบ ซ้ำ) — ลบถาวรพร้อมพิกัด/จุดงาน/น้ำมัน/รูปทั้งหมด กู้คืนไม่ได้</div>
+      <button class="btn stop" id="delses" style="margin-top:10px">🗑 ลบทริปนี้ถาวร</button></div>`));
+  }
+
+  shell('รายละเอียดการเดินทาง', nodes, { back });
   if (!renderMap($('#dmap'), pts, d.stops)) {
     $('#dmap').innerHTML = '<div class="lb" style="padding:14px;text-align:center">'
       + 'แสดงแผนที่ไม่ได้ตอนนี้ — ต้องมีสัญญาณอินเทอร์เน็ต</div>';
   }
+  if ($('#delses')) $('#delses').onclick = async () => {
+    const who = `${own.full_name || ''} ${own.employee_code || ''}`.trim();
+    if (!await askConfirm('ลบทริปถาวร',
+      `จะลบทริปของ ${who}\nวันที่ ${w.start_at ? thDT(new Date(w.start_at)) : ''}\n\n`
+      + 'ข้อมูลพิกัด จุดงาน การเติมน้ำมัน และรูปทั้งหมดจะถูกลบถาวร กู้คืนไม่ได้', 'ลบถาวร', true)) return;
+    const reason = await askText('เหตุผลการลบ', 'ระบุเหตุผล (เก็บใน audit log)', 'เช่น GPS เพี้ยน / ทดสอบ / ทริปซ้ำ', true);
+    if (reason === null) return;
+    loading('กำลังลบทริป…');
+    try {
+      const { data, error } = await sb.rpc('admin_delete_session',
+        { p_session_id: sessionId, p_reason: reason });
+      if (error || (data?.ok !== true)) {
+        const msg = { NOT_SUPERADMIN: 'เฉพาะ superadmin เท่านั้น' }[data?.code]
+          || data?.error || error?.message || data?.code || 'ไม่ทราบสาเหตุ';
+        toast('ลบไม่สำเร็จ: ' + msg, 1, 8000); return back();
+      }
+      toast('ลบทริปเรียบร้อยแล้ว' + (data.files_removed ? ` (ลบรูป ${data.files_removed} ไฟล์)` : ''));
+    } catch (e) { toast('ลบไม่สำเร็จ: ' + (e?.message || e), 1, 8000); }
+    back();
+  };
 }
 
 /* ==================================================================== */
@@ -3791,8 +3820,8 @@ async function viewAdmin() {
       <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
     el('<div id="pfbox"></div>'),
     el('<div class="card" id="hbox"><h3>สุขภาพข้อมูล</h3><div class="lb">กำลังโหลด…</div></div>'),
-    el(`<div class="note i"><span>💻</span><span>นำเข้ารายชื่อพนักงานรายเดือนและซิงก์สาขา ทำจากเครื่องคอมพิวเตอร์<br>
-      <span class="mono" style="font-size:11px">python tools/push_employees.py "&lt;ไฟล์.xlsx&gt;" --effective 2026-09-01</span></span></div>`),
+    el(`<div class="note i"><span>💻</span><span>ได้ไฟล์รายชื่อพนักงานชุดใหม่ → อัปเดตจากเครื่องคอมพิวเตอร์ (ลองก่อนด้วย <b>--dry-run</b>)<br>
+      <span class="mono" style="font-size:11px">py tools/push_employees.py "&lt;ไฟล์ใหม่.xlsx&gt;" --code &lt;รหัส superadmin&gt; --pin &lt;PIN&gt; --effective 2026-09-01</span></span></div>`),
   ];
   shell('เครื่องมือ Admin', nodes, { back: true, tabs: true, actions: false });
 
@@ -3940,11 +3969,13 @@ function barRows(items, labelOf, valOf, unit, cls) {
 }
 
 // ตารางแบบเลื่อนแนวนอนได้ — cols เดียวกับที่ใช้ Export
-function dataTable(cols, rows, render) {
+function dataTable(cols, rows, render, rowId) {
   if (!rows.length) return '<div class="note i"><span>ℹ</span><span>ไม่มีข้อมูลในช่วงที่เลือก</span></div>';
   const head = cols.map(c => `<th style="text-align:left;padding:6px 9px;border-bottom:2px solid var(--rule);
     font-size:11px;color:var(--soft);white-space:nowrap;position:sticky;top:0;background:var(--card)">${esc(c.h)}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c => {
+  const body = rows.map(r => {
+    const rid = rowId && rowId(r);
+    return `<tr${rid ? ` data-sid="${esc(rid)}" style="cursor:pointer"` : ''}>` + cols.map(c => {
     const href = c.link && c.link(r);
     // ในเปลือกแอป: ลิงก์ปกติ (ไม่ target=_blank) ให้เปลือกดักเปิดภายนอกเอง
     // บนเบราว์เซอร์คอม: เปิดแท็บใหม่ตามปกติ
@@ -3952,7 +3983,8 @@ function dataTable(cols, rows, render) {
       ? `<a href="${esc(href)}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'} style="color:var(--b)">${esc(c.linkText || 'เปิด')}</a>`
       : (render ? render(c, r) : esc(c.v(r)));
     return `<td style="padding:6px 9px;border-bottom:1px solid #EEF0F3;font-size:12.5px;white-space:nowrap">${cell}</td>`;
-  }).join('') + '</tr>').join('');
+    }).join('') + '</tr>';
+  }).join('');
   return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
     <table style="border-collapse:collapse;min-width:100%">
       <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -4169,13 +4201,17 @@ function renderSessions(rows) {
   const cols = sessionCols();
   $('#dashbody').innerHTML =
     exportBar('sessions', rows.length) +
+    `<div class="lb" style="margin:4px 2px 8px">แตะที่แถวเพื่อดูรายละเอียด/แผนที่ของทริปนั้น</div>` +
     dataTable(cols, rows, (c, r) => {
       if (c.h === 'ต่าง %' && r.gap_pct != null && r.gap_pct > 15)
         return `<b style="color:var(--r)">${esc(r.gap_pct)}%</b>`;
       if (c.h === 'สถานะ') return statusChip(r.status);
       return esc(c.v(r));
-    });
+    }, r => r.id);
   wireExport('sessions', 'รายทริป', cols, rows);
+  // แตะแถว -> เปิดรายละเอียดทริป (superadmin จะเห็นปุ่มลบในหน้านั้น)
+  $('#dashbody').querySelectorAll('tr[data-sid]').forEach(tr =>
+    tr.onclick = () => viewSessionDetail(tr.dataset.sid, { back: () => go('dashboard') }));
 }
 
 function stopCols() {
