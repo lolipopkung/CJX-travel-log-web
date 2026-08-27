@@ -231,7 +231,7 @@ const CFG = {
   showFuelOdometer: false,
   // ห่างกันเกินเท่านี้ = ระบบไม่ได้รับสัญญาณช่วงนั้น ต้องวาดเป็นเส้นประ
   // ไม่ใช่เส้นตรงทึบที่ทำให้เข้าใจว่าขับไปตามนั้นจริง
-  gpsBlindGapSec: 90,
+  gpsBlindGapSec: 180,
   gpsMinGapSec: 3,          // อย่าเก็บจุดถี่กว่านี้ — 10 ชม. x 1 จุด/วินาที = localStorage ล้น
   keepPointsInDevice: 1500, // จุดที่ส่งขึ้นระบบแล้ว เก็บในเครื่องไว้เท่าที่พอวาดเส้นทาง
   curfewUserHour: 21,
@@ -322,7 +322,7 @@ const LS = {
    ทริป/ประวัติ/ข้อมูลของคนก่อนหน้า (เคยหลุดข้ามคนมาแล้ว)
    ไม่ล้าง: device (ผูกเครื่อง) · demo · url/key · lastCode/lastEmail · master (ข้อมูลกลาง) */
 function wipeUserCache() {
-  ['trip', 'lastTrip', 'bootstrap', 'useBackup', 'consented'].forEach(k => LS.del(k));
+  ['trip', 'lastTrip', 'outbox', 'bootstrap', 'useBackup', 'consented'].forEach(k => LS.del(k));
 }
 
 /* รูปถ่ายเก็บใน IndexedDB เพราะ localStorage เล็กเกินไป */
@@ -1808,6 +1808,24 @@ function checkCurfew() {
 /* ==================================================================== */
 function saveTrip() { if (S.trip) LS.set('trip', S.trip); }
 
+/* คิวทริปที่ปิดแล้วแต่ยังส่งขึ้นระบบไม่ครบ (outbox) — เก็บได้หลายทริป
+   แก้บั๊กเดิมที่เก็บได้ทริปเดียว (lastTrip) พอเริ่มทริปใหม่ทริปเก่าถูกทับ จุดพิกัดหาย */
+function getOutbox() { return LS.get('outbox') || []; }
+function setOutbox(a) { if (a && a.length) LS.set('outbox', a); else LS.del('outbox'); }
+function tripFullySynced(t) {
+  return (t.points || []).every(p => p._s)
+    && (t.media || []).every(m => m._uploaded)
+    && !(t.stops || []).some(s => s._dirty)
+    && !(t.fuels || []).some(f => f._dirty);
+}
+function outboxAdd(trip) {
+  if (!trip || !trip.id) return;
+  if (tripFullySynced(trip)) return;            // ครบแล้วไม่ต้องเข้าคิว
+  const box = getOutbox().filter(t => t.id !== trip.id);
+  box.push(trip);
+  setOutbox(box.slice(-50));                     // กันบวม: เก็บมากสุด 50 ทริป
+}
+
 async function startFlow() {
   const v = pickedVehicle();
   if (!v) return toast('ยังไม่มีรถในระบบ', 1);
@@ -2379,6 +2397,11 @@ function askDwell(stopId, mins) {
       ระบบบันทึกพิกัดจุดนี้ไว้ให้แล้ว ช่วยเลือกว่าแวะทำอะไร
       เพื่อให้ระยะทางและค่าน้ำมันของวันนี้คิดให้คุณได้ถูกต้องครบถ้วน<br>
       <b>ถ้าเป็นการพักหรือธุระส่วนตัว เลือกได้ตามจริง ไม่มีผลเสียกับคุณ</b></div>
+    ${s.arrive_lat != null ? `<div class="note i" style="margin-top:8px"><span>📌</span><span>
+      พิกัดที่หยุด: <b class="mono">${(+s.arrive_lat).toFixed(5)}, ${(+s.arrive_lng).toFixed(5)}</b>
+      ${s.arrive_at ? '· เข้าเมื่อ ' + thTime(new Date(s.arrive_at)) : ''}<br>
+      <a href="https://www.google.com/maps?q=${s.arrive_lat},${s.arrive_lng}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'}
+        style="color:var(--b)">🗺 ดูตำแหน่งนี้บน Google Maps</a></span></div>` : ''}
     <label class="f"><span>ประเภทงาน</span><select id="dj"><option value="">— เลือก —</option>
       ${jts.map(j => `<option value="${esc(j.code)}">${esc(j.name_th)}</option>`).join('')}</select></label>
     <div id="dnw" class="hide"><label class="f"><span>เหตุผล (บังคับ)</span>
@@ -2424,10 +2447,11 @@ function viewFuelForm() {
       <div class="sub">ถ่ายให้เห็นจำนวนลิตรและยอดเงินชัด ๆ AI จะอ่านมาเติมให้</div>
       ${photoField('fp', 'ยังไม่ได้ถ่ายรูปสลิป')}
       <div class="hint" id="fhint"></div></div>
-    <label class="f big"><span>จำนวนลิตร</span><input id="lt" inputmode="decimal" placeholder="32.15"></label>
     <div class="row">
-      <label class="f"><span>ยอดเงิน (บาท)</span><input id="am" inputmode="decimal"></label>
-      <label class="f"><span>ราคา/ลิตร</span><input id="pr" inputmode="decimal"></label></div>
+      <label class="f"><span>ยอดเงิน (บาท)</span><input id="am" inputmode="decimal" placeholder="เช่น 1000"></label>
+      <label class="f"><span>ราคา/ลิตร</span><input id="pr" inputmode="decimal" placeholder="เช่น 31.10"></label></div>
+    <label class="f big"><span>จำนวนลิตร (ระบบคำนวณให้)</span>
+      <input id="lt" inputmode="decimal" readonly placeholder="กรอกยอดเงิน + ราคา/ลิตร"></label>
     <label class="f"><span>ปั๊ม / สาขา</span><input id="stn"></label>
     <label class="f ${CFG.showFuelOdometer ? '' : 'hide'}">
       <span>เลขไมล์ตอนเติม (ถ้าจำได้)</span>
@@ -2459,14 +2483,13 @@ function viewFuelForm() {
   };
   drawQuota();
 
+  // ลิตร = ยอดเงิน ÷ ราคา/ลิตร (ระบบคำนวณให้ ไม่ให้กรอกลิตรเอง)
   const autofill = () => {
-    const l = parseFloat($('#lt').value), a = parseFloat($('#am').value), p = parseFloat($('#pr').value);
-    if (l && p && !a) $('#am').value = (l * p).toFixed(2);
-    else if (l && a && !p && l > 0) $('#pr').value = (a / l).toFixed(2);
-    else if (a && p && !l && p > 0) $('#lt').value = (a / p).toFixed(2);
+    const a = parseFloat($('#am').value), p = parseFloat($('#pr').value);
+    $('#lt').value = (a > 0 && p > 0) ? (a / p).toFixed(2) : '';
     drawQuota();
   };
-  ['lt', 'am', 'pr'].forEach(id => $('#' + id).oninput = autofill);
+  ['am', 'pr'].forEach(id => $('#' + id).oninput = autofill);
 
   $('#fp').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -2477,10 +2500,12 @@ function viewFuelForm() {
     ocr = r.data;
     if (r.status === 'read') {
       const d = r.data;
-      if (d.liters) $('#lt').value = (+d.liters).toFixed(2);
       if (d.amount_thb) $('#am').value = (+d.amount_thb).toFixed(2);
       if (d.price_per_liter) $('#pr').value = (+d.price_per_liter).toFixed(2);
       if (d.station) $('#stn').value = d.station;
+      // ลิตร: คำนวณจากยอดเงิน÷ราคา ถ้าครบ ไม่งั้นใช้ค่าที่ AI อ่านได้
+      if (d.amount_thb && d.price_per_liter) autofill();
+      else if (d.liters) $('#lt').value = (+d.liters).toFixed(2);
       $('#fhint').textContent = d.warning || 'AI อ่านสลิปแล้ว — ตรวจตัวเลขให้ตรงก่อนบันทึก';
       drawQuota();
     } else if (r.status === 'unreadable') {
@@ -2650,7 +2675,7 @@ function viewTripEnd() {
     const done = { ...t };
     // ล้าง state ในเครื่องก่อน แล้วโชว์สรุปทันทีจากข้อมูลในเครื่อง
     // ไม่รอเน็ต — sync/quota ทำเบื้องหลัง (คิวออฟไลน์กันข้อมูลหายอยู่แล้ว)
-    LS.set('lastTrip', done); LS.del('trip'); S.trip = null;
+    LS.set('lastTrip', done); outboxAdd(done); LS.del('trip'); S.trip = null;
     S.dwellAnchor = null; S.dwellStopId = null;
     viewSummary(done, true);
     // ปิดงานให้จบแบบชัวร์ 3 ชั้น (กันบั๊ก "ปิดแล้วยังขึ้นกำลังทำงาน"):
@@ -2710,10 +2735,10 @@ function viewSummary(t, justDone) {
   const mapCard = el(`<div class="card"><h3>เส้นทางการเดินทาง</h3>
     <div class="sub">${(t.points || []).length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
     <div class="map" id="lmap"></div>
-    ${blindMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
-      <b>สัญญาณ GPS ขาดช่วงระหว่างเคลื่อนที่รวม ${blindMin} นาที</b> (${blind.gaps.length} ช่วง)
-      — เส้นตรงบนแผนที่คือการเชื่อมสองจุด ไม่ใช่เส้นทางจริง ระยะทางช่วงนั้นไม่ถูกนับ<br>
-      มักเกิดตอนผ่านอุโมงค์/อาคาร/พื้นที่อับสัญญาณ (ช่วงจอดนิ่งไม่นับเป็นสัญญาณขาด)</span></div>` : ''}
+    ${blindMin >= 5 ? `<div class="note i" style="margin-top:9px"><span>🛰️</span><span>
+      <b>มีบางช่วงเก็บจุดพิกัดไม่ละเอียด รวม ~${blindMin} นาที</b> (${blind.gaps.length} ช่วง)
+      — เส้นตรงบนแผนที่คือการเชื่อมสองจุดที่ห่างกัน ไม่ใช่เส้นทางจริง<br>
+      ปกติเกิดตอนแอปอยู่เบื้องหลัง/ล็อกหน้าจอ หรือผ่านอุโมงค์/อาคาร — <b>เส้นทางหลักยังบันทึกครบ</b> (ช่วงจอดนิ่งไม่นับ)</span></div>` : ''}
     <canvas class="route hide" id="rt"></canvas>
     <div class="lb" style="margin-top:6px">🟢 เริ่มงาน · 🔴 สิ้นสุด · 🔵 จุดปฏิบัติงาน · ⚪ สัญญาณขาด${
       t._pruned ? '<br>ภาพนี้ลดจุดลงเพื่อวาดให้เร็ว — เส้นทางเต็มอยู่บนระบบ' : ''}</div></div>`);
@@ -2721,10 +2746,14 @@ function viewSummary(t, justDone) {
 
   nodes.push(el(`<div class="card"><h3>จุดปฏิบัติงาน</h3><div class="list">
     ${(t.stops || []).map(s => `<div class="item"><div class="n ${s.job_type_code ? '' : 'q'}">${s.job_type_code ? s.seq : '?'}</div>
-      <div class="tx"><div class="h">${esc(jt(s.job_type_code))}</div>
+      <div class="tx"><div class="h">${esc(jt(s.job_type_code))}${
+        s.dwell_minutes ? ` <span class="lb">(จอด ${s.dwell_minutes} นาที)</span>` : ''}</div>
       <div class="s">${s.store_code ? esc(s.store_code) + ' : ' + esc(s.store_name || '') + '<br>' : ''}
         เข้า ${thTime(new Date(s.arrive_at))}${s.depart_at ? ' → ออก ' + thTime(new Date(s.depart_at)) : ''}
-        ${s.job_note ? '<br>เหตุผล: ' + esc(s.job_note) : ''}</div></div></div>`).join('')
+        ${s.job_note ? '<br>เหตุผล: ' + esc(s.job_note) : ''}
+        ${s.arrive_lat != null ? `<br>📌 <span class="mono">${(+s.arrive_lat).toFixed(5)}, ${(+s.arrive_lng).toFixed(5)}</span>
+          · <a href="https://www.google.com/maps?q=${s.arrive_lat},${s.arrive_lng}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'}
+          style="color:var(--b)">🗺 แผนที่</a>` : ''}</div></div></div>`).join('')
     || '<div class="lb">ไม่มีจุดปฏิบัติงานในทริปนี้</div>'}</div></div>`));
 
   nodes.push(el('<button class="btn" id="hm">กลับหน้าหลัก</button>'));
@@ -2761,7 +2790,7 @@ function splitByGaps(raw) {
       // = ขยับไกลระหว่างที่ไม่มีจุด สัญญาณขาดจริงตอนวิ่ง เช่น อุโมงค์/พื้นที่อับ)
       // ปลายใกล้กัน = จอดนิ่ง/รถติดคลาน เปลือกแอปไม่ส่งจุดเพราะขยับน้อย ไม่ใช่สัญญาณหลุด
       const movedM = haversineM(prev.ll[0], prev.ll[1], p.ll[0], p.ll[1]);
-      if (movedM > 250) {
+      if (movedM > 500) {
         if (cur.length) segs.push(cur);
         gaps.push({ from: prev.ll, to: p.ll, sec: gapSec });
         blindSec += gapSec;
@@ -2962,10 +2991,10 @@ async function viewSessionDetail(sessionId, opts = {}) {
   nodes.push(el(`<div class="card"><h3>เส้นทางการเดินทาง</h3>
     <div class="sub">${pts.length} จุดพิกัด — ซูมเข้าออกและลากดูได้</div>
     <div class="map" id="dmap"></div>
-    ${blMin >= 2 ? `<div class="note w" style="margin-top:9px"><span>📵</span><span>
-      <b>สัญญาณ GPS ขาดช่วงระหว่างเคลื่อนที่รวม ${blMin} นาที</b> (${bl.gaps.length} ช่วง)
-      — เส้นตรงคือการเชื่อมสองจุด ไม่ใช่เส้นทางจริง
-      ระยะ GPS ที่เห็นจึงต่ำกว่าระยะที่วิ่งจริงในช่วงนั้น (ช่วงจอดนิ่งไม่นับ)</span></div>` : ''}
+    ${blMin >= 5 ? `<div class="note i" style="margin-top:9px"><span>🛰️</span><span>
+      <b>มีบางช่วงเก็บจุดพิกัดไม่ละเอียด รวม ~${blMin} นาที</b> (${bl.gaps.length} ช่วง)
+      — เส้นตรงคือการเชื่อมสองจุดที่ห่างกัน ไม่ใช่เส้นทางจริง
+      ปกติเกิดตอนแอปอยู่เบื้องหลัง/ล็อกหน้าจอ (ช่วงจอดนิ่งไม่นับ)</span></div>` : ''}
     </div>`));
 
   nodes.push(el(`<div class="card"><h3>จุดปฏิบัติงาน ${(d.stops || []).length} จุด</h3>
@@ -3032,10 +3061,14 @@ async function viewHistory() {
       .eq('user_id', S.profile.id).order('start_at', { ascending: false }).limit(60);
     rows = data || [];
   } catch { toast('ดึงประวัติจากเซิร์ฟเวอร์ไม่ได้', 1); }
-  // แสดง lastTrip ที่ค้างในเครื่องเฉพาะของเจ้าของบัญชีนี้เท่านั้น (กันข้อมูลข้ามคน)
+  // แสดงทริปในเครื่องที่ยังส่งขึ้นระบบไม่ครบ (คิว outbox + lastTrip) เฉพาะบัญชีนี้ (กันข้อมูลข้ามคน)
+  const localTrips = [...getOutbox()];
   const last = LS.get('lastTrip');
-  if (last && last.user_id === S.profile.id && !rows.some(r => r.id === last.id))
-    rows.unshift({ ...last, start_at: last.startAt });
+  if (last && !localTrips.some(t => t.id === last.id)) localTrips.push(last);
+  localTrips.forEach(lt => {
+    if (lt && lt.user_id === S.profile.id && !rows.some(r => r.id === lt.id))
+      rows.unshift({ ...lt, start_at: lt.startAt });
+  });
 
   // จัดกลุ่มตามเดือน (MMM-YY เช่น Aug-26) แล้วแสดงแต่ละเดือนแยกกัน
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4535,6 +4568,8 @@ async function viewSyncStatus() {
       <div class="item"><div class="tx">
         <div class="h">${S.online === false ? '🔴 ออฟไลน์' : '🟢 ออนไลน์'}</div>
         <div class="s">ข้อมูลที่ยังไม่ได้ส่งขึ้นระบบ: <b>${S.pending || 0}</b> รายการ</div></div></div>
+      ${S.lastSyncError ? `<div class="note e" style="margin-top:8px"><span>⚠</span><span>
+        ส่งข้อมูลไม่สำเร็จ: ${esc(S.lastSyncError)}</span></div>` : ''}
       ${S.lastCloseError ? `<div class="note e" style="margin-top:8px"><span>⚠</span><span>
         ปิดงานล่าสุดมีปัญหา: ${esc(S.lastCloseError)}</span></div>` : ''}
       ${qErr ? `<div class="note e" style="margin-top:8px"><span>⚠</span><span>อ่านสถานะไม่ได้: ${esc(qErr)}</span></div>` : ''}
@@ -4563,7 +4598,11 @@ async function viewSyncStatus() {
   $('#dosync').onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = 'กำลังซิงค์…';
     try { await sync(); } catch {}
-    toast('ซิงค์เรียบร้อย'); go('syncstatus');
+    const left = S.pending || 0;
+    if (S.lastSyncError) toast('ซิงค์ไม่สำเร็จ: ' + S.lastSyncError + (left ? ` (ค้าง ${left})` : ''), 1, 12000);
+    else if (left) toast(`ซิงค์แล้ว แต่ยังค้าง ${left} รายการ`, 1, 8000);
+    else toast('ซิงค์ครบแล้ว');
+    go('syncstatus');
   };
 
   document.querySelectorAll('[data-oid]').forEach(card => {
@@ -4605,80 +4644,104 @@ async function viewSyncStatus() {
 /*  sync ขึ้น Supabase                                                  */
 /* ==================================================================== */
 let syncing = false;
+// อัปโหลดทริปเดียวขึ้นเซิร์ฟเวอร์ — throw ถ้าเจอ error (ให้ตัวเรียกจับ)
+async function syncOne(t) {
+  const row = { id: t.id, user_id: t.user_id, vehicle_id: t.vehicle_id,
+    is_backup_vehicle: !!t.is_backup_vehicle, status: t.status,
+    start_at: t.startAt, start_lat: t.start_lat, start_lng: t.start_lng,
+    start_accuracy_m: t.start_accuracy_m, odo_start: t.odo_start, odo_start_ai: t.odo_start_ai,
+    gps_distance_m: Math.round(t.distM || 0), point_count: (t.points || []).length };
+  if (t.status !== 'active') Object.assign(row, { end_at: t.end_at, end_lat: t.end_lat,
+    end_lng: t.end_lng, end_accuracy_m: t.end_accuracy_m, odo_end: t.odo_end,
+    odo_end_ai: t.odo_end_ai, note: t.note });
+  Object.keys(row).forEach(k => row[k] == null && k !== 'note' && delete row[k]);
+  const { error: e1 } = await sb.from('work_sessions').upsert(row);
+  if (e1) throw e1;
+
+  // จุดพิกัด
+  const unsent = (t.points || []).filter(p => !p._s);
+  for (let i = 0; i < unsent.length; i += 200) {
+    const batch = unsent.slice(i, i + 200);
+    const { error } = await sb.from('session_points').upsert(batch.map(p => ({
+      session_id: t.id, at: p.at, lat: p.lat, lng: p.lng,
+      accuracy_m: p.acc ?? null, speed_mps: p.spd ?? null,
+      heading: p.hdg ?? null, altitude_m: p.alt ?? null })),
+      { onConflict: 'session_id,at', ignoreDuplicates: true });
+    if (error) throw error;
+    batch.forEach(p => p._s = 1);
+  }
+  // จุดปฏิบัติงาน + น้ำมัน
+  for (const s of (t.stops || []).filter(x => x._dirty)) {
+    const { _dirty, ...row2 } = s;
+    const { error } = await sb.from('stops').upsert(row2);
+    if (!error) delete s._dirty;
+  }
+  for (const f of (t.fuels || []).filter(x => x._dirty)) {
+    const { _dirty, ...row2 } = f;
+    const { error } = await sb.from('fuel_records').upsert(row2);
+    if (!error) delete f._dirty;
+  }
+  // รูป
+  for (const m of (t.media || []).filter(x => !x._uploaded)) {
+    const blob = await IDB.get(m.id);
+    if (!blob) { m._uploaded = true; continue; }
+    const path = `${S.profile.id}/${t.id}/${m.kind}_${m.id}.jpg`;
+    const up = await sb.storage.from(CFG.bucket).upload(path, blob,
+      { contentType: blob.type || 'image/jpeg', upsert: true });
+    if (up.error) continue;
+    const { _uploaded, ...mm } = m;
+    const { error } = await sb.from('media').insert({ ...mm, path });
+    if (!error) { m._uploaded = true; await IDB.del(m.id); }
+  }
+  return tripFullySynced(t);
+}
+
 async function sync() {
   if (syncing || !navigator.onLine || !S.profile) { countPending(); return; }
   syncing = true;
+  S.lastSyncError = null;
   try {
-    const t = S.trip || LS.get('lastTrip');
-    if (t) {
-      const row = { id: t.id, user_id: t.user_id, vehicle_id: t.vehicle_id,
-        is_backup_vehicle: !!t.is_backup_vehicle, status: t.status,
-        start_at: t.startAt, start_lat: t.start_lat, start_lng: t.start_lng,
-        start_accuracy_m: t.start_accuracy_m, odo_start: t.odo_start, odo_start_ai: t.odo_start_ai,
-        gps_distance_m: Math.round(t.distM || 0), point_count: (t.points || []).length };
-      if (t.status !== 'active') Object.assign(row, { end_at: t.end_at, end_lat: t.end_lat,
-        end_lng: t.end_lng, end_accuracy_m: t.end_accuracy_m, odo_end: t.odo_end,
-        odo_end_ai: t.odo_end_ai, note: t.note });
-      Object.keys(row).forEach(k => row[k] == null && k !== 'note' && delete row[k]);
-      const { error: e1 } = await sb.from('work_sessions').upsert(row);
-      if (e1) throw e1;
+    // ทริปที่ต้องส่ง: ทริปที่กำลังทำงาน + ทุกทริปในคิว (ปิดแล้วยังส่งไม่ครบ)
+    const jobs = [];
+    if (S.trip) jobs.push(S.trip);
+    for (const t of getOutbox()) if (!S.trip || t.id !== S.trip.id) jobs.push(t);
 
-      // จุดพิกัด
-      const unsent = (t.points || []).filter(p => !p._s);
-      for (let i = 0; i < unsent.length; i += 200) {
-        const batch = unsent.slice(i, i + 200);
-        const { error } = await sb.from('session_points').upsert(batch.map(p => ({
-          session_id: t.id, at: p.at, lat: p.lat, lng: p.lng,
-          accuracy_m: p.acc ?? null, speed_mps: p.spd ?? null,
-          heading: p.hdg ?? null, altitude_m: p.alt ?? null })),
-          { onConflict: 'session_id,at', ignoreDuplicates: true });
-        if (error) throw error;
-        batch.forEach(p => p._s = 1);
-      }
-      // จุดปฏิบัติงาน + น้ำมัน
-      for (const s of (t.stops || []).filter(x => x._dirty)) {
-        const { _dirty, ...row2 } = s;
-        const { error } = await sb.from('stops').upsert(row2);
-        if (!error) delete s._dirty;
-      }
-      for (const f of (t.fuels || []).filter(x => x._dirty)) {
-        const { _dirty, ...row2 } = f;
-        const { error } = await sb.from('fuel_records').upsert(row2);
-        if (!error) delete f._dirty;
-      }
-      // รูป
-      for (const m of (t.media || []).filter(x => !x._uploaded)) {
-        const blob = await IDB.get(m.id);
-        if (!blob) { m._uploaded = true; continue; }
-        const path = `${S.profile.id}/${t.id}/${m.kind}_${m.id}.jpg`;
-        const up = await sb.storage.from(CFG.bucket).upload(path, blob,
-          { contentType: blob.type || 'image/jpeg', upsert: true });
-        if (up.error) continue;
-        const { _uploaded, ...mm } = m;
-        const { error } = await sb.from('media').insert({ ...mm, path });
-        if (!error) { m._uploaded = true; await IDB.del(m.id); }
-      }
-      saveTrip();
-      if (t.status !== 'active') {
-        const clean = (t.points || []).every(p => p._s) && (t.media || []).every(m => m._uploaded)
-          && !(t.stops || []).some(s => s._dirty) && !(t.fuels || []).some(f => f._dirty);
-        if (clean) LS.del('lastTrip');
+    const remain = [];   // ทริปปิดแล้วที่ยังส่งไม่ครบ (เก็บไว้ลองใหม่)
+    for (const t of jobs) {
+      try {
+        const clean = await syncOne(t);
+        if (t.status !== 'active' && !clean) remain.push(t);
+      } catch (e) {
+        S.lastSyncError = e?.message || String(e);
+        console.warn('sync', t.id, S.lastSyncError);
+        if (t.status !== 'active') remain.push(t);   // เก็บไว้ลองใหม่รอบหน้า
       }
     }
+    setOutbox(remain);
+    saveTrip();
+    // ล้าง lastTrip เมื่อส่งครบและไม่ค้างในคิวแล้ว
+    const lt = LS.get('lastTrip');
+    if (lt && tripFullySynced(lt) && !remain.some(t => t.id === lt.id)) LS.del('lastTrip');
   } catch (e) {
+    S.lastSyncError = e?.message || String(e);
     console.warn('sync', e?.message || e);
   } finally { syncing = false; countPending(); }
 }
 
 function countPending() {
-  const t = S.trip || LS.get('lastTrip');
   let n = 0;
-  if (t) {
+  const seen = new Set();
+  const add = t => {
+    if (!t || !t.id || seen.has(t.id)) return;
+    seen.add(t.id);
     n += (t.points || []).filter(p => !p._s).length;
     n += (t.stops || []).filter(s => s._dirty).length;
     n += (t.fuels || []).filter(f => f._dirty).length;
     n += (t.media || []).filter(m => !m._uploaded).length;
-  }
+  };
+  add(S.trip);
+  add(LS.get('lastTrip'));
+  getOutbox().forEach(add);
   S.pending = n;
 }
 
@@ -4808,6 +4871,10 @@ async function boot() {
   // กู้ทริปที่ค้าง — เฉพาะทริปของบัญชีนี้เท่านั้น (กันปลุกทริปของคนอื่นบนเครื่องเดิม)
   const saved = LS.get('trip');
   const lastT = LS.get('lastTrip');
+  // ย้ายทริปปิดค้างของระบบเก่า (เก็บได้ทริปเดียว) เข้าคิว outbox — กันจุดพิกัดหาย
+  if (lastT && lastT.status && lastT.status !== 'active' && lastT.user_id === S.profile.id) {
+    outboxAdd(lastT);
+  }
   if (saved && saved.status === 'active' && saved.user_id === S.profile.id) {
     S.trip = saved;
     S.dwellAnchor = null; S.dwellSince = Date.now(); S.dwellStopId = null;
