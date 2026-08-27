@@ -1937,9 +1937,13 @@ function viewTripStart(pos) {
         <input id="odo" inputmode="numeric" maxlength="7" placeholder="128470"></label>
       <div class="hint" id="ohint">AI จะเติมให้จากรูป — เลขที่กรอกต้องตรงกับรูป</div>
       <div id="omis"></div></div>
-    <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-      <input type="checkbox" id="home" style="width:20px;height:20px;flex:none;margin-top:1px">
-      <span>🏠 <b>ยืนยันว่าเริ่มงานจากที่พัก/ภูมิลำเนา</b> (บังคับ) — จุดเริ่มต้นการทำงานต้องออกจากที่พักเสมอ</span></label>
+    <div class="card"><h3>🏠 เริ่มงานจากบ้าน/ที่พัก</h3>
+      <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" id="home" style="width:20px;height:20px;flex:none;margin-top:1px">
+        <span><b>เริ่มงานจากบ้าน/ที่พัก</b> (บังคับ) — จุดเริ่มต้นการทำงานต้องออกจากบ้าน/ที่พักเสมอ</span></label>
+      <label class="f" style="margin-top:10px"><span>ชื่อสถานที่ (บ้าน/ที่พัก)</span>
+        <input id="homename" autocomplete="off" placeholder="เช่น บ้านพัก ซ.xxx / หอพัก / ภูมิลำเนา"></label>
+      <div class="lb mono" style="margin-top:5px">📌 พิกัดที่จะบันทึก ณ จุดกดยืนยัน: ${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}</div></div>
     <button class="btn lg" id="go">✓ ยืนยันเริ่มงาน และเริ่มบันทึกเส้นทาง</button>
     <button class="link" id="re">จับพิกัดใหม่</button>
   </main>`);
@@ -2001,20 +2005,29 @@ function viewTripStart(pos) {
     if (!photo) return toast('ต้องถ่ายรูปเลขไมล์ต้นทางก่อน', 1);
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ต้นทาง', 1);
-    if (!$('#home').checked) return toast('ต้องเริ่มงานจากที่พัก/ภูมิลำเนา — ติ๊กยืนยันก่อนเริ่มงาน', 1, 8000);
+    if (!$('#home').checked) return toast('ต้องเริ่มงานจากบ้าน/ที่พัก — ติ๊กยืนยันก่อนเริ่มงาน', 1, 8000);
+    const homeName = $('#homename').value.trim();
+    if (!homeName) return toast('กรอกชื่อสถานที่ (บ้าน/ที่พัก) ก่อนเริ่มงาน', 1, 8000);
     const mis = odoMismatch(odo, ocr?.odometer_km ?? null);
     if (mis) return toast(mis, 1, 8000);
     e.target.disabled = true; e.target.textContent = 'กำลังเริ่ม…';
 
-    const id = uuid();
+    // พิกัด ณ จุดกดยืนยัน (ใช้ตัวล่าสุดถ้ามีสด กว่า)
+    const hc = S.lastPos?.coords || c;
+    const id = uuid(), startAt = new Date().toISOString();
     S.trip = {
       id, user_id: S.profile.id, vehicle_id: v.id, is_backup_vehicle: !!v.is_backup,
-      status: 'active', startAt: new Date().toISOString(),
-      start_lat: c.latitude, start_lng: c.longitude, start_accuracy_m: c.accuracy,
-      odo_start: odo, odo_start_ai: ocr?.odometer_km ?? null, start_from_home: true,
+      status: 'active', startAt,
+      start_lat: hc.latitude, start_lng: hc.longitude, start_accuracy_m: hc.accuracy,
+      odo_start: odo, odo_start_ai: ocr?.odometer_km ?? null,
+      start_from_home: true, start_place_label: homeName,
       distM: 0, points: [], stops: [], fuels: [], media: [], _counted: null, _synced: false,
     };
-    S.trip.points.push({ at: S.trip.startAt, lat: c.latitude, lng: c.longitude, acc: c.accuracy });
+    S.trip.points.push({ at: startAt, lat: hc.latitude, lng: hc.longitude, acc: hc.accuracy });
+    // บันทึกจุดเริ่มต้น = บ้าน/ที่พัก เป็นจุดปฏิบัติงานจุดแรก (stamp พิกัด ณ จุดกดยืนยัน)
+    S.trip.stops.push({ id: uuid(), session_id: id, seq: 1, job_type_code: 'HOME',
+      place_label: homeName, arrive_at: startAt, depart_at: startAt,
+      arrive_lat: hc.latitude, arrive_lng: hc.longitude, source: 'home_start', _dirty: 1 });
     S.dwellAnchor = { lat: c.latitude, lng: c.longitude }; S.dwellSince = Date.now();
     S.dwellStopId = null; S.curfewWarned = 0;
 
@@ -2594,12 +2607,18 @@ function viewTripEnd() {
       <div id="warn"></div></div>
     <label class="f"><span>หมายเหตุปิดงาน (ไม่บังคับ)</span>
       <textarea id="nt"></textarea></label>
-    <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-      <input type="checkbox" id="endhome" style="width:20px;height:20px;flex:none;margin-top:1px">
-      <span>🏠 <b>ยืนยันว่ากลับถึงที่พัก/ภูมิลำเนาแล้ว</b> (บังคับ) — จุดสิ้นสุดการทำงานต้องเป็นที่พักเสมอ</span></label>
+    <div class="card"><h3>🏠 สิ้นสุดที่บ้าน/ที่พัก</h3>
+      <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" id="endhome" style="width:20px;height:20px;flex:none;margin-top:1px">
+        <span><b>สิ้นสุดที่บ้าน/ที่พัก</b> (บังคับ) — จุดสิ้นสุดการทำงานต้องเป็นบ้าน/ที่พักเสมอ</span></label>
+      <label class="f" style="margin-top:10px"><span>ชื่อสถานที่ (บ้าน/ที่พัก)</span>
+        <input id="endhomename" autocomplete="off" placeholder="เช่น บ้านพัก ซ.xxx / หอพัก / ภูมิลำเนา"></label>
+      <div class="lb" style="margin-top:4px">📌 ระบบจะบันทึกพิกัด ณ จุดที่กดยืนยันให้อัตโนมัติ</div></div>
     <button class="btn stop lg" id="ok">ยืนยันสิ้นสุดการทำงาน</button>
   </main>`);
   shell('สิ้นสุดการทำงาน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
+  // เติมชื่อบ้าน/ที่พักให้จากตอนเริ่มงาน (ส่วนใหญ่กลับที่เดิม) — แก้ได้ถ้าคนละที่
+  if (t.start_place_label && $('#endhomename')) $('#endhomename').value = t.start_place_label;
 
   getPos(15000).then(p => { pos = p;
     $('#pv').innerHTML = `${thDate(new Date())} ${thSec(new Date())}<br>
@@ -2672,7 +2691,9 @@ function viewTripEnd() {
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ปลายทาง', 1);
     if (t.odo_start && odo < t.odo_start) return toast('เลขไมล์ปลายทางน้อยกว่าต้นทาง', 1);
-    if (!$('#endhome').checked) return toast('จุดสิ้นสุดต้องเป็นที่พัก/ภูมิลำเนา — ติ๊กยืนยันก่อนปิดงาน', 1, 8000);
+    if (!$('#endhome').checked) return toast('จุดสิ้นสุดต้องเป็นบ้าน/ที่พัก — ติ๊กยืนยันก่อนปิดงาน', 1, 8000);
+    const endHomeName = $('#endhomename').value.trim();
+    if (!endHomeName) return toast('กรอกชื่อสถานที่ (บ้าน/ที่พัก) ก่อนปิดงาน', 1, 8000);
     const misEnd = odoMismatch(odo, ocr?.odometer_km ?? null);
     if (misEnd) return toast(misEnd, 1, 8000);
     const open = t.stops.filter(s => !s.job_type_code).length;
@@ -2717,6 +2738,11 @@ function viewTripEnd() {
     // (ถ้าไม่รอ จุดเบื้องหลังจะยังค้างใน buffer แล้วสรุปเห็นเป็นสัญญาณขาด)
     if (NATIVE.on) { try { await drainNativePoints(); } catch {} }
     detectDwellStops(t);   // จับจุดจอดนานที่ยังไม่ถูก mark (รวมช่วงที่อยู่เบื้องหลัง)
+    // บันทึกจุดสิ้นสุด = บ้าน/ที่พัก เป็นจุดสุดท้าย (stamp พิกัด ณ จุดกดยืนยัน)
+    t.end_place_label = endHomeName;
+    t.stops.push({ id: uuid(), session_id: t.id, seq: t.stops.length + 1, job_type_code: 'HOME',
+      place_label: endHomeName, arrive_at: t.end_at, depart_at: t.end_at,
+      arrive_lat: t.end_lat, arrive_lng: t.end_lng, source: 'home_end', _dirty: 1 });
     stopWatch(); saveTrip();
 
     const done = { ...t };
