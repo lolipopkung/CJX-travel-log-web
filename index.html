@@ -4014,7 +4014,22 @@ async function viewAdmin() {
    Dashboard รายงานหลังบ้าน (Admin) — sql/30_dashboard.sql
    สรุปการปฏิบัติงานรายวัน–รายเดือน รายคน / ราย Cost center + Export
    =================================================================== */
-const DASH = { tab: 'overview', from: null, to: null, cc: '', emp: '', data: {} };
+const DASH = { tab: 'overview', from: null, to: null, cc: '', emp: '', month: '', data: {} };
+const TH_MON_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+// ตัวเลือกเดือนย้อนหลัง 18 เดือน แสดงเป็น "MMM-YY" ไทย เช่น "ส.ค. 69"
+function monthOptions(now, selected) {
+  let out = '<option value="">— เลือกเดือน (MMM-YY) —</option>';
+  const d = new Date(now.getFullYear(), now.getMonth(), 1);
+  for (let i = 0; i < 18; i++) {
+    const y = d.getFullYear(), m = d.getMonth();
+    const val = y + '-' + String(m + 1).padStart(2, '0');
+    const label = TH_MON_ABBR[m] + ' ' + String((y + 543) % 100).padStart(2, '0');
+    out += `<option value="${val}"${val === selected ? ' selected' : ''}>${label}</option>`;
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
 
 // ป้ายภาษาไทยของชนิดคำขอ + สถานะ ticket
 const REQ_TYPE_TH = { fleet_card: 'Fleet card ชำรุด/หาย', plate: 'เปลี่ยนทะเบียน',
@@ -4144,7 +4159,9 @@ async function viewDashboard() {
       ? (isSuper ? 'สรุปการปฏิบัติงานทั้งองค์กร — เลือกช่วงวัน / Cost center / รายคน'
                  : 'เห็นเฉพาะตัวเองและลูกน้องในสายอนุมัติ — เลือกช่วงวัน / รายคน')
       : 'สรุปการปฏิบัติงานของคุณ — เลือกช่วงวันที่'}</div>
-    <div class="seg" id="dpreset" style="margin-bottom:10px">
+    <label class="f"><span>เลือกเดือน</span>
+      <select id="dmonth">${monthOptions(now, DASH.month)}</select></label>
+    <div class="seg" id="dpreset" style="margin:8px 0 10px">
       <button data-p="today">วันนี้</button>
       <button data-p="7">7 วัน</button>
       <button data-p="month">เดือนนี้</button>
@@ -4192,8 +4209,27 @@ async function viewDashboard() {
     }
     if (b.dataset.p !== 'prev') $('#dto').value = isoDate(t);
     $('#dfrom').value = isoDate(f);
+    if ($('#dmonth')) $('#dmonth').value = '';        // ใช้ preset -> ล้างตัวเลือกเดือน
+    DASH.month = '';
     $('#dpreset').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
   });
+
+  // เลือกเดือน (MMM-YY) -> ตั้งช่วงวันเป็นทั้งเดือนนั้น แล้วดึงรายงานเลย
+  $('#dmonth').onchange = (e) => {
+    const v = e.target.value;
+    DASH.month = v;
+    if (!v) return;
+    const [y, m] = v.split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const now2 = new Date();
+    // ถ้าเป็นเดือนปัจจุบัน ใช้ถึงวันนี้ ไม่งั้นใช้วันสุดท้ายของเดือน
+    const last = (y === now2.getFullYear() && m - 1 === now2.getMonth())
+      ? now2 : new Date(y, m, 0);
+    $('#dfrom').value = isoDate(first);
+    $('#dto').value = isoDate(last);
+    $('#dpreset').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    readFilters(); loadDash();
+  };
 
   $('#dload').onclick = () => { readFilters(); loadDash(); };
   readFilters(); loadDash();
@@ -4220,11 +4256,22 @@ async function loadDash() {
     } else if (DASH.tab === 'sessions') {
       const { data, error } = await sb.rpc('admin_report_sessions', args);
       if (error || data?.ok !== true) throw error || new Error(data?.code);
-      DASH.data.sessions = data.rows; renderSessions(data.rows);
+      // เรียงวันที่ใหม่ -> เก่า
+      const rows = (data.rows || []).slice().sort((a, b) =>
+        String(b.start_at || b.work_date || '').localeCompare(String(a.start_at || a.work_date || '')));
+      DASH.data.sessions = rows; renderSessions(rows);
     } else if (DASH.tab === 'stops') {
       const { data, error } = await sb.rpc('admin_report_stops', args);
       if (error || data?.ok !== true) throw error || new Error(data?.code);
-      DASH.data.stops = data.rows; renderStops(data.rows);
+      // วันที่ใหม่ -> เก่า แต่ภายในวัน/ทริปเดียวกันเรียงตาม journey (เวลาเข้าเก่า -> ใหม่)
+      const rows = (data.rows || []).slice().sort((a, b) => {
+        const d = String(b.work_date || '').localeCompare(String(a.work_date || ''));
+        if (d) return d;
+        const e = String(a.employee_code || '').localeCompare(String(b.employee_code || ''));
+        if (e) return e;
+        return String(a.arrive_at || '').localeCompare(String(b.arrive_at || ''));
+      });
+      DASH.data.stops = rows; renderStops(rows);
     } else if (DASH.tab === 'vehicles') {
       const { data, error } = await sb.rpc('admin_report_vehicles', args);
       if (error || data?.ok !== true) throw error || new Error(data?.code);
@@ -4233,7 +4280,9 @@ async function loadDash() {
       const { data, error } = await sb.rpc('admin_report_requests',
         { ...args, p_status: null });
       if (error || data?.ok !== true) throw error || new Error(data?.code);
-      DASH.data.requests = data.rows; renderRequests(data.rows);
+      const rows = (data.rows || []).slice().sort((a, b) =>
+        String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      DASH.data.requests = rows; renderRequests(rows);
     }
   } catch (e) {
     box.innerHTML = `<div class="note e"><span>⚠</span><span>โหลดรายงานไม่ได้: ${
