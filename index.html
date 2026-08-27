@@ -205,6 +205,8 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    ===================================================================== */
 const SUPABASE_URL = 'https://fyailrukbrioqdcshpas.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_j22tn7nwgpcZZ61rdoFLJA_sAjLEIIo';
+// Longdo Map API key (public map key) — ใช้ค้นหาสถานที่ทั่วไป (อาคาร/บริษัท/แลนด์มาร์ก) นอกเหนือจากสาขา CJ
+const LONGDO_KEY = 'f6b78aca9b9b4823d31ab6783c196ac9';
 
 const CFG = {
   url: SUPABASE_URL || localStorage.getItem('tl.url') || '',
@@ -1935,6 +1937,9 @@ function viewTripStart(pos) {
         <input id="odo" inputmode="numeric" maxlength="7" placeholder="128470"></label>
       <div class="hint" id="ohint">AI จะเติมให้จากรูป — เลขที่กรอกต้องตรงกับรูป</div>
       <div id="omis"></div></div>
+    <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" id="home" style="width:20px;height:20px;flex:none;margin-top:1px">
+      <span>🏠 <b>ยืนยันว่าเริ่มงานจากที่พัก/ภูมิลำเนา</b> (บังคับ) — จุดเริ่มต้นการทำงานต้องออกจากที่พักเสมอ</span></label>
     <button class="btn lg" id="go">✓ ยืนยันเริ่มงาน และเริ่มบันทึกเส้นทาง</button>
     <button class="link" id="re">จับพิกัดใหม่</button>
   </main>`);
@@ -1996,6 +2001,7 @@ function viewTripStart(pos) {
     if (!photo) return toast('ต้องถ่ายรูปเลขไมล์ต้นทางก่อน', 1);
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ต้นทาง', 1);
+    if (!$('#home').checked) return toast('ต้องเริ่มงานจากที่พัก/ภูมิลำเนา — ติ๊กยืนยันก่อนเริ่มงาน', 1, 8000);
     const mis = odoMismatch(odo, ocr?.odometer_km ?? null);
     if (mis) return toast(mis, 1, 8000);
     e.target.disabled = true; e.target.textContent = 'กำลังเริ่ม…';
@@ -2005,7 +2011,7 @@ function viewTripStart(pos) {
       id, user_id: S.profile.id, vehicle_id: v.id, is_backup_vehicle: !!v.is_backup,
       status: 'active', startAt: new Date().toISOString(),
       start_lat: c.latitude, start_lng: c.longitude, start_accuracy_m: c.accuracy,
-      odo_start: odo, odo_start_ai: ocr?.odometer_km ?? null,
+      odo_start: odo, odo_start_ai: ocr?.odometer_km ?? null, start_from_home: true,
       distM: 0, points: [], stops: [], fuels: [], media: [], _counted: null, _synced: false,
     };
     S.trip.points.push({ at: S.trip.startAt, lat: c.latitude, lng: c.longitude, acc: c.accuracy });
@@ -2125,6 +2131,29 @@ async function closeStuckSession() {
 }
 
 /* ---------------- แผ่นเลือกสาขา ---------------- */
+/* ค้นหาสถานที่ทั่วไป (อาคาร/บริษัท/แลนด์มาร์ก) จาก Longdo Map — ฟรี เหมาะกับไทย
+   ใช้เสริมจากฐานสาขา CJ · คืน [{name, address, lat, lng}] */
+async function longdoSearch(q) {
+  const t = String(q || '').trim();
+  if (!LONGDO_KEY || t.length < 2) return [];
+  let url = 'https://search.longdo.com/mapsearch/json/search'
+    + `?keyword=${encodeURIComponent(t)}&key=${LONGDO_KEY}&limit=15&locale=th`;
+  if (S.lastPos) url += `&lon=${S.lastPos.coords.longitude}&lat=${S.lastPos.coords.latitude}&span=40km`;
+  try {
+    const res = await fetch(url);
+    const txt = await res.text();
+    // Longdo คืน JS ที่ throw เมื่อ error (เช่น "API Key Error" ตอน referer ไม่อยู่ใน whitelist)
+    if (!res.ok || /^\s*throw/i.test(txt)) { console.warn('Longdo search:', txt.slice(0, 140)); return []; }
+    const j = JSON.parse(txt);
+    return (j.data || []).map(d => ({
+      name: d.name || d.address || '(ไม่มีชื่อ)',
+      address: d.address || '',
+      lat: d.lat ?? d.latitude ?? null,
+      lng: d.lon ?? d.lng ?? d.longitude ?? null,
+    })).filter(x => x.name && x.name !== '(ไม่มีชื่อ)');
+  } catch (e) { console.warn('Longdo search failed', e?.message || e); return []; }
+}
+
 async function pickStore(onPick) {
   let nearby = [];
   if (S.lastPos) {
@@ -2136,11 +2165,13 @@ async function pickStore(onPick) {
   }
   const all = S.master.stores || [];
   const sheet = el(`<div class="sheet">
-    <h3>ค้นหาสาขา</h3>
-    <label class="f"><span>พิมพ์รหัส (125) หรือชื่อสาขา</span>
-      <input id="sq" placeholder="กระทุ่มล้ม หรือ CJX00125 หรือ TH0001"></label>
+    <h3>ค้นหาสถานที่</h3>
+    <label class="f"><span>พิมพ์ชื่อสาขา/รหัส หรือชื่ออาคาร/บริษัท/สถานที่</span>
+      <input id="sq" placeholder="เช่น กระทุ่มล้ม · CJX00125 · เซ็นทรัลลาดพร้าว"></label>
     <div class="lb" id="scount"></div>
-    <div class="list" id="slist" style="max-height:52vh;overflow:auto"></div>
+    <div class="list" id="slist" style="max-height:32vh;overflow:auto"></div>
+    <div class="lb" id="ldlb" style="margin-top:8px"></div>
+    <div class="list" id="ldlist" style="max-height:28vh;overflow:auto"></div>
     <button class="link" id="sx">ปิด</button></div>`);
   overlay(sheet);
   const norm = s => String(s || '').toLowerCase();
@@ -2156,21 +2187,44 @@ async function pickStore(onPick) {
     }).slice(0, 60);
     $('#scount').innerHTML = near
       ? `<span style="color:#00713F">◎ สาขาใกล้คุณ ${rows.length} แห่ง — พิมพ์เพื่อค้นจากทั้งหมด ${all.length}</span>`
-      : `พบ ${rows.length} สาขา จากทั้งหมด ${all.length}`;
+      : `สาขา CJ: พบ ${rows.length} จากทั้งหมด ${all.length}`;
     $('#slist').innerHTML = rows.map(s => `<div class="item" data-code="${esc(s.code)}" style="cursor:pointer">
       <div class="tx"><div class="h mono" style="font-size:13.5px">${esc(s.code)} : ${esc(s.name)}</div>
         <div class="s">${s.chain === 'TD' ? 'สาขา TD' : 'สาขา CJx'}${
           s.legacy_code ? ' · รหัสเดิม ' + esc(s.legacy_code) : ''}</div></div>
       ${s.distance_km != null ? `<div class="mono" style="font-size:12px;font-weight:700;color:#00713F">${nf(s.distance_km, 1)} กม.</div>` : '<div>›</div>'}
-    </div>`).join('') || '<div class="lb">ไม่พบสาขาที่ตรงกับคำค้น</div>';
+    </div>`).join('') || '<div class="lb">ไม่พบสาขา CJ ที่ตรง — ดูสถานที่อื่นจาก Longdo ด้านล่าง</div>';
     $('#slist').querySelectorAll('[data-code]').forEach(n => n.onclick = () => {
       const s = (near ? nearby : all).find(x => x.code === n.dataset.code)
              || all.find(x => x.code === n.dataset.code);
       closeOverlay(); onPick(s);
     });
   };
+  // ค้นสถานที่อื่นจาก Longdo (debounce กันยิง API ถี่)
+  let ldT;
+  const drawLongdo = (q) => {
+    clearTimeout(ldT);
+    const t = q.trim();
+    if (t.length < 2) { if ($('#ldlb')) $('#ldlb').innerHTML = ''; if ($('#ldlist')) $('#ldlist').innerHTML = ''; return; }
+    if ($('#ldlb')) $('#ldlb').innerHTML = '🔎 กำลังค้นสถานที่อื่นจาก Longdo…';
+    ldT = setTimeout(async () => {
+      const res = await longdoSearch(t);
+      if (!$('#ldlb') || !$('#ldlist')) return;   // แผ่นถูกปิดไปแล้ว
+      $('#ldlb').innerHTML = res.length
+        ? `📍 สถานที่อื่น (Longdo) ${res.length} แห่ง — แตะเพื่อเลือก`
+        : '📍 ไม่พบสถานที่อื่นใน Longdo';
+      $('#ldlist').innerHTML = res.map((p, i) => `<div class="item" data-ld="${i}" style="cursor:pointer">
+        <div class="tx"><div class="h">${esc(p.name)}</div>
+          <div class="s">${esc(p.address || '')}</div></div><div>›</div></div>`).join('');
+      $('#ldlist').querySelectorAll('[data-ld]').forEach(n => n.onclick = () => {
+        const p = res[+n.dataset.ld];
+        closeOverlay();
+        onPick({ code: null, name: p.name, place_label: p.name, address: p.address, lat: p.lat, lng: p.lng, _longdo: true });
+      });
+    }, 350);
+  };
   draw('');
-  $('#sq').oninput = e => draw(e.target.value);
+  $('#sq').oninput = e => { draw(e.target.value); drawLongdo(e.target.value); };
   $('#sx').onclick = closeOverlay;
   setTimeout(() => $('#sq')?.focus(), 120);
 }
@@ -2307,28 +2361,10 @@ function viewStopForm() {
       node.onclick = () => afterPick(rows[+node.dataset.i]));
   };
 
-  // ค้นสถานที่ทั่วไปจาก Photon (บริการค้นหาสถานที่ของ OSM ฟรี ไม่ต้องใช้ API key
-  // ออกแบบมาเพื่อ autocomplete โดยเฉพาะ) — เอียงผลไปใกล้ตำแหน่งปัจจุบัน
+  // ค้นสถานที่ทั่วไป (อาคาร/บริษัท/แลนด์มาร์ก) จาก Longdo Map — ฟรี ครอบคลุมไทยดี
   let osmTimer = null, lastQ = '';
-  async function searchOsm(q) {
-    const c = pos?.coords || S.lastPos?.coords;
-    let url = 'https://photon.komoot.io/api/?lang=default&limit=6&q='
-      + encodeURIComponent(q);
-    if (c) url += '&lat=' + c.latitude + '&lon=' + c.longitude;
-    try {
-      const r = await fetch(url);
-      if (!r.ok) return [];
-      const j = await r.json();
-      return (j.features || []).map(f => {
-        const p = f.properties || {}, g = (f.geometry || {}).coordinates || [];
-        const name = [p.name, p.street, p.district || p.city, p.state]
-          .filter(Boolean).slice(0, 3).join(', ');
-        return { name: name || p.name || q, lat: g[1], lng: g[0] };
-      }).filter(x => x.lat != null);
-    } catch { return []; }
-  }
 
-  // พิมพ์แล้วแนะนำ: สาขาในระบบก่อน (ทันที) + สถานที่ทั่วไปจาก OSM (หน่วง)
+  // พิมพ์แล้วแนะนำ: สาขาในระบบก่อน (ทันที) + สถานที่ทั่วไปจาก Longdo (หน่วง)
   $('#pl2').oninput = () => {
     const raw = $('#pl2').value.trim(), q = raw.toLowerCase();
     setFar(null); S.pickedPlaceLL = null;
@@ -2344,7 +2380,7 @@ function viewStopForm() {
     if (q.length < 3) return;
     osmTimer = setTimeout(async () => {
       if (raw === lastQ) return; lastQ = raw;
-      const places = await searchOsm(raw);
+      const places = await longdoSearch(raw);
       if ($('#pl2').value.trim() !== raw) return;   // พิมพ์ต่อแล้ว ทิ้งผลเก่า
       renderSug(stores.concat(places));             // รวมสาขา + สถานที่ทั่วไป
     }, 600);
@@ -2419,7 +2455,8 @@ function askDwell(stopId, mins) {
       ? '🏪 เลือกสาขา (งานประเภทนี้ต้องระบุ)'
       : '🏪 เลือก / ค้นหาสาขา (ถ้าไปที่สาขา)';
   };
-  $('#dst').onclick = () => pickStore(x => { store = x; $('#dst').textContent = '🏪 ' + x.code + ' : ' + x.name; });
+  $('#dst').onclick = () => pickStore(x => { store = x;
+    $('#dst').textContent = (x.code ? '🏪 ' + x.code + ' : ' : '📍 ') + x.name; });
   const finish = (patch) => { Object.assign(s, patch, { needs_reason: !patch.job_type_code, _dirty: 1 });
     saveTrip(); sync(); closeOverlay(); go('active'); };
   $('#dok').onclick = () => {
@@ -2557,6 +2594,9 @@ function viewTripEnd() {
       <div id="warn"></div></div>
     <label class="f"><span>หมายเหตุปิดงาน (ไม่บังคับ)</span>
       <textarea id="nt"></textarea></label>
+    <label class="note w" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" id="endhome" style="width:20px;height:20px;flex:none;margin-top:1px">
+      <span>🏠 <b>ยืนยันว่ากลับถึงที่พัก/ภูมิลำเนาแล้ว</b> (บังคับ) — จุดสิ้นสุดการทำงานต้องเป็นที่พักเสมอ</span></label>
     <button class="btn stop lg" id="ok">ยืนยันสิ้นสุดการทำงาน</button>
   </main>`);
   shell('สิ้นสุดการทำงาน', [...b.childNodes], { back: () => go('active'), tabs: false, actions: false });
@@ -2632,9 +2672,16 @@ function viewTripEnd() {
     if (!photoOk) return toast('รูปเลขไมล์ไม่ชัด กรุณาถ่ายใหม่ให้เห็นตัวเลขชัดเจน', 1);
     if (!odo) return toast('กรอกเลขไมล์ปลายทาง', 1);
     if (t.odo_start && odo < t.odo_start) return toast('เลขไมล์ปลายทางน้อยกว่าต้นทาง', 1);
+    if (!$('#endhome').checked) return toast('จุดสิ้นสุดต้องเป็นที่พัก/ภูมิลำเนา — ติ๊กยืนยันก่อนปิดงาน', 1, 8000);
     const misEnd = odoMismatch(odo, ocr?.odometer_km ?? null);
     if (misEnd) return toast(misEnd, 1, 8000);
     const open = t.stops.filter(s => !s.job_type_code).length;
+    // บังคับระบุจุดที่แวะให้ครบก่อนปิดงาน — พาไปหน้ากำลังทำงานให้แตะ "เลือกเลย" ที่จุดสีเหลือง
+    if (open > 0) {
+      toast(`ยังมีจุดที่แวะ ${open} จุดที่ยังไม่ได้ระบุว่าไปทำอะไร/ที่ไหน — ต้องระบุให้ครบก่อนปิดงาน `
+        + `(แตะปุ่ม "เลือกเลย" ที่จุดสีเหลืองแต่ละจุด)`, 1, 10000);
+      return go('active');
+    }
 
     // ระยะต่างเกินเกณฑ์ = ต้องยืนยันแยกอีกชั้น ไม่ให้กดผ่านไปโดยไม่ทันอ่าน
     const gpsKm = t.distM / 1000;
@@ -4656,7 +4703,13 @@ async function syncOne(t) {
     odo_end_ai: t.odo_end_ai, note: t.note });
   Object.keys(row).forEach(k => row[k] == null && k !== 'note' && delete row[k]);
   const { error: e1 } = await sb.from('work_sessions').upsert(row);
-  if (e1) throw e1;
+  // ทริปที่ปิดแล้ว: RLS กันไม่ให้ user แก้ work_sessions (อัปเดต gps/point_count ไม่ได้)
+  // แต่ "จุดพิกัด" ยังอัปได้ถ้าปิดไม่เกิน 3 วัน — ข้ามไปอัปจุดต่อ (นี่คือ fix บั๊ก "ปิดแล้ว 0.0 กม.")
+  // ทริปที่ยังทำงานอยู่ (active) ต้องสร้าง row ให้สำเร็จก่อน ไม่งั้นจุดจะติด FK
+  if (e1) {
+    if (t.status === 'active') throw e1;
+    console.warn('ws upsert ข้าม (ปิดแล้ว/RLS) → อัปจุดต่อ', t.id, e1.message);
+  }
 
   // จุดพิกัด
   const unsent = (t.points || []).filter(p => !p._s);
