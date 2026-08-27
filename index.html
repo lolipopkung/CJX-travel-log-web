@@ -4872,8 +4872,11 @@ async function loadMaster() {
     one('job_types', 'code,name_th,billable,needs_store,requires_note', 'sort'),
     pageAll('stores', 'code,name,legacy_code,chain,lat,lng'),
   ]);
+  const jts = jt.data || [];
+  // แสดงชื่อจุดเริ่ม/สิ้นสุดงานเป็น "บ้าน/ที่พัก" (จาก HOME) ให้สั้น เข้าใจง่าย
+  jts.forEach(j => { if (j.code === 'HOME') j.name_th = 'บ้าน/ที่พัก'; });
   const m = { cost_centers: cc.data || [], provinces: pv.data || [], brands: br.data || [],
-    models: md.data || [], fuel_types: ft.data || [], job_types: jt.data || [], stores: st || [] };
+    models: md.data || [], fuel_types: ft.data || [], job_types: jts, stores: st || [] };
   LS.set('master', m); return m;
 }
 
