@@ -219,7 +219,7 @@ const CFG = {
   pinLength: 6,
   consentVersion: '2026-08-21',
   bucket: 'triplog',
-  dwellMinutes: 30,      // แวะเกินเท่านี้ = ระบบ stamp พิกัดให้เอง
+  dwellMinutes: 20,      // แวะเกินเท่านี้ = ระบบ stamp พิกัดให้เอง
   dwellRadiusM: 80,
   gpsMaxAccuracyM: 35,   // สัญญาณแย่กว่านี้ทิ้ง — กันเส้นหลอนในเมือง/ตึกสูง (multipath)
   gpsMinMoveM: 25,
@@ -1791,18 +1791,26 @@ function detectDwellStops(t) {
   return added;
 }
 
-/* เตือน 21:00 ที่ตัวเอง · 22:00 ระบบฝั่งเซิร์ฟเวอร์แจ้งหัวหน้า */
+/* เตือนยังไม่ปิดงาน: 21:00 แจ้งพนักงาน · 22:00 แจ้งพนักงาน+หัวหน้า
+   สร้าง alert เข้า tab แจ้งเตือนทันที (curfew_check_self) ไม่ต้องรอ pg_cron
+   + toast เตือนสั้น ๆ บนหน้าจอด้วย */
 function checkCurfew() {
   if (!S.trip) return;
   const h = new Date().getHours();
   if (h >= CFG.curfewUserHour && S.curfewWarned < 1) {
     S.curfewWarned = 1;
-    toast(`ใกล้ ${CFG.curfewSupHour}:00 — ถ้าเลิกงานแล้วกรุณากดสิ้นสุดการทำงาน`, 1);
+    toast(`ใกล้ ${CFG.curfewSupHour}:00 — ถ้าเลิกงานแล้วกรุณากดสิ้นสุดการทำงาน (แจ้งไว้ในกล่องแจ้งเตือนแล้ว)`, 1);
+    curfewNotify();
   }
   if (h >= CFG.curfewSupHour && S.curfewWarned < 2) {
     S.curfewWarned = 2;
     toast(`เลย ${CFG.curfewSupHour}:00 แล้วยังไม่ปิดงาน — ระบบแจ้งหัวหน้างานของคุณแล้ว`, 1);
+    curfewNotify();
   }
+}
+// สร้าง alert เข้า tab แจ้งเตือน (ของพนักงาน + หัวหน้าตอน 22:00) แล้วอัปเดตตัวเลขกระดิ่ง
+async function curfewNotify() {
+  try { await sb.rpc('curfew_check_self'); await refreshCounts(); if (S.view === 'alerts') go('alerts'); } catch {}
 }
 
 /* ==================================================================== */
@@ -2098,6 +2106,7 @@ function viewActive() {
         <div class="list">${stopList}</div></div>`),
     el(`<div class="row"><button class="btn gh" id="addstop">📍 เพิ่มจุด</button>
         <button class="btn gh" id="addfuel">⛽ เติมน้ำมัน</button></div>`),
+    el(`<button class="btn gh" id="addpast">🗺 เพิ่มจุดย้อนหลังจากเส้นทาง</button>`),
   ];
   if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
   if (!tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
@@ -2106,6 +2115,7 @@ function viewActive() {
   shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
   $('#addstop').onclick = () => viewStopForm();
   $('#addfuel').onclick = () => viewFuelForm();
+  $('#addpast').onclick = () => go('addpast');
   $('#end').onclick = () => viewTripEnd();
   if ($('#resume')) $('#resume').onclick = () => { startWatch(); go('active'); };
   document.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => {
@@ -2432,6 +2442,79 @@ function viewStopForm() {
     toast(prev ? 'บันทึกจุดใหม่ และปิดจุดก่อนหน้าให้แล้ว' : 'บันทึกจุดปฏิบัติงานแล้ว');
     go('active');
   };
+}
+
+/* เพิ่มจุดปฏิบัติงานย้อนหลัง โดยแตะบนเส้นทางที่บันทึกไว้ (ไม่ต้องอยู่ที่นั่นแล้ว)
+   เหมาะกับคนวิ่งสำรวจแล้วแวะหลายที่ ลืมกดตอนนั้น — มาปักหมุดทีหลังก่อนปิดงาน
+   ระบบ snap ไปจุดพิกัดจริงที่ใกล้ที่สุด + ใช้เวลาจริงที่บันทึกไว้ */
+function viewAddPastStop() {
+  const t = S.trip;
+  if (!t) return go('home');
+  const pts = (t.points || []).filter(p => p.lat != null && p.lng != null);
+  if (pts.length < 2) { toast('ยังไม่มีเส้นทางให้เลือกจุด', 1); return go('active'); }
+
+  const nodes = [
+    el(`<div class="note i"><span>👆</span><span>แตะบนเส้นทาง (เส้นแดง) ตรงจุดที่คุณเคยแวะ
+      ระบบจะปักหมุดให้ที่จุดพิกัดจริงที่ใกล้ที่สุด แล้วให้เลือกว่าแวะทำอะไร
+      — ใช้เวลาตามที่บันทึกไว้จริง ไม่ต้องอยู่ที่นั่นแล้ว</span></div>`),
+    el('<div class="map" id="pmap" style="height:58vh"></div>'),
+    el('<div class="lb" id="phint" style="text-align:center;margin-top:6px">เลือกจุดจากเส้นทางได้เลย</div>'),
+  ];
+  shell('เพิ่มจุดย้อนหลัง', nodes, { back: () => go('active'), tabs: false, actions: false });
+
+  const box = $('#pmap');
+  if (typeof L === 'undefined') {
+    box.innerHTML = '<div class="lb" style="padding:16px;text-align:center">ต้องมีอินเทอร์เน็ตเพื่อโหลดแผนที่</div>';
+    return;
+  }
+  try {
+    const map = L.map(box, { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    const all = pts.map(p => [p.lat, p.lng]);
+    const line = L.polyline(all, { color: '#E30613', weight: 6, opacity: .85 }).addTo(map);
+    map.fitBounds(line.getBounds(), { padding: [26, 26] });
+    // จุดที่มีอยู่แล้ว
+    (t.stops || []).forEach(st => {
+      if (st.arrive_lat == null) return;
+      L.circleMarker([st.arrive_lat, st.arrive_lng], { radius: 7, color: '#fff', weight: 2.5,
+        fillColor: st.job_type_code ? '#1B3A93' : '#C9A227', fillOpacity: 1 }).addTo(map)
+        .bindPopup('จุดที่ ' + (st.seq || '?'));
+    });
+    let marker = null;
+    map.on('click', async (e) => {
+      // snap ไปจุดพิกัดจริงที่ใกล้ที่สุด (จะได้เวลาจริงที่บันทึกไว้ด้วย)
+      let bi = -1, bd = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const d = haversineM(e.latlng.lat, e.latlng.lng, pts[i].lat, pts[i].lng);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      const best = pts[bi]; if (!best) return;
+      if (marker) map.removeLayer(marker);
+      marker = L.marker([best.lat, best.lng]).addTo(map);
+      const nb = pts[bi + 1];   // จุดถัดไป = ตอนออกจากที่นี่
+      const dwell = nb ? Math.max(0, Math.round((new Date(nb.at) - new Date(best.at)) / 60000)) : 0;
+      const ok = await askConfirm('เพิ่มจุดตรงนี้?',
+        'เวลาที่บันทึกไว้: ' + thTime(new Date(best.at))
+        + (dwell ? ' · จอดประมาณ ' + dwell + ' นาที' : '')
+        + '\nพิกัด: ' + best.lat.toFixed(5) + ', ' + best.lng.toFixed(5),
+        'เพิ่มจุดนี้');
+      if (!ok) { if (marker) { map.removeLayer(marker); marker = null; } return; }
+      const s = { id: uuid(), session_id: t.id, job_type_code: null, source: 'manual_past',
+        needs_reason: true, dwell_minutes: dwell,
+        arrive_at: best.at, arrive_lat: best.lat, arrive_lng: best.lng,
+        depart_at: nb ? nb.at : best.at, _dirty: 1 };
+      t.stops.push(s);
+      t.stops.sort((x, y) => new Date(x.arrive_at) - new Date(y.arrive_at));
+      t.stops.forEach((st, i) => st.seq = i + 1);
+      saveTrip();
+      askDwell(s.id, dwell);   // เปิดหน้าระบุประเภทงานทันที (กด "ไว้ทีหลัง" ได้ ค่อยระบุก่อนปิดงาน)
+    });
+    setTimeout(() => map.invalidateSize(), 120);
+  } catch (err) {
+    console.warn('pmap', err?.message);
+    box.innerHTML = '<div class="lb" style="padding:16px;text-align:center">แสดงแผนที่ไม่ได้ตอนนี้</div>';
+  }
 }
 
 /* ---------------- แผ่นถามจุดที่แวะ ---------------- */
@@ -4263,6 +4346,11 @@ async function loadDash() {
     } else if (DASH.tab === 'stops') {
       const { data, error } = await sb.rpc('admin_report_stops', args);
       if (error || data?.ok !== true) throw error || new Error(data?.code);
+      // กันเวลาออกมาก่อนเวลาเข้า (จุดปิดงาน/เวลาคลาดเคลื่อน) และนาทีที่อยู่ติดลบ
+      (data.rows || []).forEach(r => {
+        if (r.depart_at && r.arrive_at && r.depart_at < r.arrive_at) r.depart_at = r.arrive_at;
+        if (r.dwell_minutes != null && r.dwell_minutes < 0) r.dwell_minutes = 0;
+      });
       // วันที่ใหม่ -> เก่า แต่ภายในวัน/ทริปเดียวกันเรียงตาม journey (เวลาเข้าเก่า -> ใหม่)
       const rows = (data.rows || []).slice().sort((a, b) => {
         const d = String(b.work_date || '').localeCompare(String(a.work_date || ''));
@@ -4893,7 +4981,7 @@ function go(v, opts) {
     backup: viewBackupRequest, platechange: viewPlateChange,
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
-    syncstatus: viewSyncStatus, pinreport: viewPinReport,
+    syncstatus: viewSyncStatus, pinreport: viewPinReport, addpast: viewAddPastStop,
   };
   (map[v] || viewHome)();
 }
