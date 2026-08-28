@@ -4866,6 +4866,9 @@ async function viewSyncStatus() {
 let syncing = false;
 // อัปโหลดทริปเดียวขึ้นเซิร์ฟเวอร์ — throw ถ้าเจอ error (ให้ตัวเรียกจับ)
 async function syncOne(t) {
+  // กันค่าสถานะเก่าที่ enum ไม่รู้จัก (เช่น 'closed' จากแอปเวอร์ชันเก่า) -> ถือว่า 'ended'
+  // ไม่งั้น upsert ทั้งคิวพังด้วย invalid input value for enum session_status
+  if (!['active', 'ended', 'auto_closed', 'void'].includes(t.status)) t.status = 'ended';
   const row = { id: t.id, user_id: t.user_id, vehicle_id: t.vehicle_id,
     is_backup_vehicle: !!t.is_backup_vehicle, status: t.status,
     start_at: t.startAt, start_lat: t.start_lat, start_lng: t.start_lng,
