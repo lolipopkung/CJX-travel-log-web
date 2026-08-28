@@ -2527,6 +2527,34 @@ function viewAddPastStop() {
   }
 }
 
+/* reverse-geocode: พิกัด -> ชื่อสถานที่/ที่อยู่ใกล้เคียง (ภาษาไทย)
+   ใช้ OSM Nominatim (ฟรี ไม่ต้องมีคีย์) — Longdo ไม่มี product Geocoding ให้เปิด */
+async function longdoReverse(lat, lng) {
+  if (lat == null || lng == null) return '';
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18'
+      + '&accept-language=th&lat=' + lat + '&lon=' + lng);
+    if (!res.ok) return '';
+    const j = await res.json();
+    const a = j.address || {};
+    const parts = [j.name, a.amenity, a.shop, a.building, a.road,
+      a.neighbourhood || a.suburb, a.city_district || a.town || a.city || a.village]
+      .filter(v => v && String(v).trim());
+    return [...new Set(parts)].slice(0, 3).join(' ');
+  } catch (e) { console.warn('reverse-geocode failed', e?.message || e); return ''; }
+}
+
+/* หาสาขา CJ ที่ใกล้พิกัดที่กำหนดที่สุด (ภายใน maxKm) — ใช้พิกัดของจุด ไม่ใช่ตำแหน่งปัจจุบัน */
+async function nearestStoreTo(lat, lng, maxKm) {
+  if (lat == null || lng == null) return null;
+  try {
+    const { data } = await sb.rpc('nearest_stores', { p_lat: lat, p_lng: lng, p_limit: 1 });
+    const s = (data || [])[0];
+    if (s && (s.distance_km == null || s.distance_km <= (maxKm || 0.3))) return s;
+  } catch {}
+  return null;
+}
+
 /* ---------------- แผ่นถามจุดที่แวะ ---------------- */
 function askDwell(stopId, mins) {
   const t = S.trip; const s = t.stops.find(x => x.id === stopId); if (!s) return;
@@ -2544,6 +2572,8 @@ function askDwell(stopId, mins) {
       ${s.arrive_at ? '· เข้าเมื่อ ' + thTime(new Date(s.arrive_at)) : ''}<br>
       <a href="https://www.google.com/maps?q=${s.arrive_lat},${s.arrive_lng}" ${NATIVE.on ? '' : 'target="_blank" rel="noopener"'}
         style="color:var(--b)">🗺 ดูตำแหน่งนี้บน Google Maps</a></span></div>` : ''}
+    <label class="f"><span>ชื่อสถานที่ (ระบบเดาจากพิกัดให้ แก้ได้)</span>
+      <input id="dpl" value="${esc(s.place_label || '')}" placeholder="กำลังดึงชื่อสถานที่จากพิกัด…"></label>
     <label class="f"><span>ประเภทงาน</span><select id="dj"><option value="">— เลือก —</option>
       ${jts.map(j => `<option value="${esc(j.code)}">${esc(j.name_th)}</option>`).join('')}</select></label>
     <div id="dnw" class="hide"><label class="f"><span>เหตุผล (บังคับ)</span>
@@ -2562,9 +2592,11 @@ function askDwell(stopId, mins) {
       : '🏪 เลือก / ค้นหาสาขา (ถ้าไปที่สาขา)';
   };
   $('#dst').onclick = () => pickStore(x => { store = x;
-    $('#dst').textContent = (x.code ? '🏪 ' + x.code + ' : ' : '📍 ') + x.name; });
+    $('#dst').textContent = (x.code ? '🏪 ' + x.code + ' : ' : '📍 ') + x.name;
+    if ($('#dpl')) $('#dpl').value = x.name; });   // เลือกสาขาแล้วเติมชื่อสถานที่ให้ด้วย
   const finish = (patch) => { Object.assign(s, patch, { needs_reason: !patch.job_type_code, _dirty: 1 });
     saveTrip(); sync(); closeOverlay(); go('active'); };
+  const placeName = () => ($('#dpl')?.value || '').trim() || store?.name || null;
   $('#dok').onclick = () => {
     const j = jts.find(x => x.code === $('#dj').value);
     if (!j) return toast('เลือกประเภทงาน', 1);
@@ -2572,13 +2604,30 @@ function askDwell(stopId, mins) {
     if (j.needs_store && !store) return toast('งานประเภทนี้ต้องเลือกสาขา', 1);
     finish({ job_type_code: j.code, job_note: $('#dn').value.trim() || null,
       store_code: store?.code || null, store_name: store?.name || null,
-      place_label: store?.name || null });
+      place_label: placeName() });
   };
   $('#dbk').onclick = () => {
     const other = jts.find(j => j.code === 'OTHER');
-    finish({ job_type_code: other?.code || null, job_note: 'พัก / ธุระส่วนตัว' });
+    finish({ job_type_code: other?.code || null, job_note: 'พัก / ธุระส่วนตัว', place_label: placeName() });
   };
   $('#dl').onclick = closeOverlay;
+
+  // เดาชื่อสถานที่จากพิกัดให้อัตโนมัติ: สาขา CJ ใกล้สุด (≤250 ม.) ก่อน ไม่งั้น Longdo reverse-geocode
+  if (!s.place_label && s.arrive_lat != null) {
+    (async () => {
+      const near = await nearestStoreTo(s.arrive_lat, s.arrive_lng, 0.25);
+      if (!$('#dpl')) return;
+      if (near && !store) {
+        store = { code: near.code, name: near.name };
+        $('#dst').textContent = '🏪 ' + near.code + ' : ' + near.name;
+        if (!$('#dpl').value) $('#dpl').value = near.name;
+      } else if (!$('#dpl').value) {
+        const addr = await longdoReverse(s.arrive_lat, s.arrive_lng);
+        if ($('#dpl') && !$('#dpl').value && addr) $('#dpl').value = addr;
+      }
+      if ($('#dpl')) $('#dpl').placeholder = 'พิมพ์ชื่อสถานที่ (หรือปล่อยว่าง)';
+    })();
+  }
 }
 
 /* ---------------- เติมน้ำมัน ---------------- */
