@@ -1018,8 +1018,9 @@ async function viewPlateChange(mode) {
           ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
         <div id="nfw"></div>
         ${fleetNew ? `<label class="f"><span>หมายเลข Fleet card ของรถคันใหม่</span>
-          <input id="nfc" value="หลังจากได้รับอนุมัติจากฝ่ายบัญชี เลข Fleet card จะอัพเดทให้อัตโนมัติ" readonly
-            style="color:var(--soft);font-size:12.5px"></label>`
+          <div style="border:1px dashed var(--y-dk);border-radius:10px;padding:9px 11px;
+            background:#FFFDF0;color:var(--soft);font-size:12.5px;line-height:1.5">
+            🏦 หลังจากได้รับอนุมัติจากฝ่ายบัญชี เลข Fleet card จะอัพเดทให้อัตโนมัติ</div></label>`
         : `<label class="f"><span>หมายเลข Fleet card ของรถคันใหม่ (ถ้ามี)</span>
           <input id="nfc" inputmode="numeric"></label>
         <div class="hint" id="nfch">รถบริษัทต้องระบุ · รถส่วนตัวที่ได้รับบัตรก็กรอกได้</div>`}
