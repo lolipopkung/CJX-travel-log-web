@@ -910,6 +910,55 @@ function viewVehicle(opts = {}) {
 }
 
 /* ==================================================================== */
+/*  ขั้นตอนคำขอ Fleet card — timeline ใช้ทั้ง "ขอใหม่" และ "เปลี่ยนเลขบัตร"  */
+/* ==================================================================== */
+/* active = ขั้นที่กำลังดำเนินการ (0..3) · -1 = ยังไม่ยื่น (โชว์เป็นข้อมูลเฉย ๆ)
+   0 พนักงานกดส่งคำขอ · 1 หัวหน้าอนุมัติ · 2 บัญชีทำเรื่องออกบัตร ·
+   3 บัญชีได้บัตรแล้ว + แจ้งเตือนให้พนักงานมารับ (แจ้งในแท็บ 🔔 แจ้งเตือน) */
+function fleetFlowSteps(active = -1) {
+  const steps = [
+    ['📝', 'พนักงานกดส่งคำขอ'],
+    ['👤', 'หัวหน้างานพิจารณาอนุมัติ'],
+    ['🏦', 'บัญชีทำเรื่องขอออก Fleet card'],
+    ['🎁', 'บัญชีได้บัตรแล้ว — แจ้งเตือนให้พนักงานมารับบัตร'],
+  ];
+  const rows = steps.map(([ic, tx], i) => {
+    const done = active > i, cur = active === i, todo = !done && !cur;
+    const dotBg = done ? 'var(--g)' : cur ? 'var(--y-dk)' : '#fff';
+    const dotBd = done ? 'var(--g)' : cur ? 'var(--y-dk)' : '#E5E7EB';
+    const dotFg = done ? '#fff' : cur ? 'var(--ink)' : 'var(--faint)';
+    const txCol = todo ? 'var(--faint)' : 'var(--ink)';
+    const line = i < steps.length - 1
+      ? `<div style="width:2px;flex:1;min-height:15px;background:${done ? 'var(--g)' : '#E5E7EB'}"></div>` : '';
+    return `<div style="display:flex;gap:10px;align-items:stretch">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="width:26px;height:26px;flex:0 0 26px;border-radius:50%;
+          display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;
+          background:${dotBg};color:${dotFg};border:2px solid ${dotBd}">${done ? '✓' : i + 1}</div>${line}
+      </div>
+      <div style="padding-bottom:${i < steps.length - 1 ? '11px' : '0'}">
+        <div style="font-size:13px;font-weight:${cur ? '800' : '600'};color:${txCol}">${ic} ${tx}</div>
+        ${cur ? '<div class="lb" style="color:var(--y-dk);font-weight:700">● กำลังดำเนินการขั้นนี้</div>' : ''}
+      </div></div>`;
+  }).join('');
+  return `<div class="card" style="padding:13px"><h3 style="margin-bottom:10px">ขั้นตอนการขอ Fleet card</h3>
+    ${rows}
+    <div class="hint" style="padding-top:9px">เมื่อบัญชีได้บัตรแล้ว ระบบจะส่งแจ้งเตือนในแท็บ
+      🔔 แจ้งเตือน ของคุณให้มารับบัตร จากนั้นกด "ยืนยันว่ารับบัตรแล้ว" เพื่ออัปเดตเลขบัตรอัตโนมัติ</div>
+  </div>`;
+}
+
+/* แปลงสถานะคำขอ -> ขั้นใน timeline (ใช้กับคำขอ fleet card ที่ยื่นแล้ว) */
+function fleetFlowActive(r) {
+  if (!r) return 0;                                   // เพิ่งจะยื่น
+  if (r.status === 'rejected' || r.status === 'cancelled') return -1;
+  if (r.fulfillment_status === 'collected') return 4; // จบครบทุกขั้น
+  if (r.fulfillment_status === 'issued') return 3;    // ได้บัตรแล้ว รอมารับ
+  if (r.status === 'approved') return 2;              // บัญชีกำลังออกบัตร
+  return 1;                                           // รอหัวหน้าอนุมัติ
+}
+
+/* ==================================================================== */
 /*  เปลี่ยนรถประจำ (ถาวร)                                                */
 /* ==================================================================== */
 /* เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน ไม่ใช่แค่แก้ตัวอักษรบนป้าย
@@ -927,6 +976,7 @@ async function viewPlateChange(mode) {
     return shell(fleetNew ? 'ขอ Fleet card ใหม่' : 'เปลี่ยนรถประจำ', [
       el(`<div class="note w"><span>⏳</span><span><b>มีคำขอรออนุมัติอยู่แล้ว</b><br>
         ทะเบียน <span class="mono">${esc(pend.new_value)}</span> — ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน</span></div>`),
+      ...(fleetNew ? [el(fleetFlowSteps(fleetFlowActive(pend)))] : []),
     ], { back: () => go('requests'), tabs: true, actions: false });
   }
 
@@ -936,6 +986,7 @@ async function viewPlateChange(mode) {
       <b>ใช้ส่งคำขอสำหรับพนักงานที่ยังไม่เคยได้รับ Fleet card เท่านั้น</b><br>
       • พนักงานที่จะยื่นขอ Fleet card ได้ ต้องเป็นพนักงานที่<b>ผ่านทดลองงานแล้ว</b>เท่านั้น<br>
       • เงื่อนไขการพิจารณาให้ Fleet card และโควต้าน้ำมันที่จะได้รับ ขึ้นอยู่กับเกณฑ์ของบริษัทฯ</span></div>
+    ${fleetFlowSteps(0)}
     <button class="btn gh" id="tofleetchg" style="margin-bottom:4px">💳 บัตรชำรุด / บัตรหาย? ไปที่ "เปลี่ยนเลข Fleet card"</button>`
     : `<div class="note i"><span>🚗</span><span>ใช้เมื่อ<b>เปลี่ยนรถที่ใช้ประจำแบบถาวร</b>
       ถ้าแค่ใช้รถคันอื่นชั่วคราวเพราะรถเสีย ให้เลือก
@@ -2767,15 +2818,19 @@ function viewFuelForm() {
     if (!photo) return toast('ต้องถ่ายรูปสลิปน้ำมันก่อน', 1);
     if (!l || l <= 0 || l > 500) return toast('จำนวนลิตรไม่ถูกต้อง', 1);
     e.target.disabled = true; e.target.textContent = 'กำลังบันทึก…';
+    // stamp พิกัด ณ จุดกดยืนยัน (จับสด ถ้าไม่ได้ใช้ตัวล่าสุด)
+    let fc = S.lastPos?.coords || null;
+    try { fc = (await getPos(10000)).coords; } catch {}
     const t = S.trip, fid = uuid();
     t.fuels.push({ id: fid, session_id: t.id, filled_at: new Date().toISOString(),
       liters: l, amount_thb: parseFloat($('#am').value) || null,
       price_per_liter: parseFloat($('#pr').value) || null,
       station: $('#stn').value.trim() || null,
+      lat: fc?.latitude ?? null, lng: fc?.longitude ?? null,
       odo_at_fill: parseInt($('#fodo').value.replace(/\D/g, ''), 10) || null,
       paid_by: pickedVehicle()?.ownership === 'company' ? 'fleet_card' : 'own',
       ai_raw: ocr || null, _dirty: 1 });
-    await queuePhoto(t.id, 'fuel_slip', photo, S.lastPos?.coords, ocr);
+    await queuePhoto(t.id, 'fuel_slip', photo, fc || S.lastPos?.coords, ocr);
     t.media[t.media.length - 1].fuel_id = fid;
     saveTrip(); await sync(); await refreshQuota();
     toast('บันทึกการเติมน้ำมันแล้ว'); go('active');
@@ -3512,6 +3567,12 @@ async function viewRequests(opts = {}) {
       <label class="f" style="margin-top:11px"><span>เหตุผล (บังคับ)</span>
         <textarea id="rs"></textarea></label>
       </div>`));
+    // ขั้นตอนการออกบัตร — โชว์เฉพาะหัวข้อ Fleet card (ไล่ตามคำขอล่าสุดถ้ามี)
+    if (isFleet) {
+      const lastFleet = (mine || []).find(r => r.req_type === 'fleet_card'
+        && !['rejected', 'cancelled'].includes(r.status) && r.fulfillment_status !== 'collected');
+      nodes.push(el(fleetFlowSteps(lastFleet ? fleetFlowActive(lastFleet) : -1)));
+    }
     nodes.push(el(`<div class="note ${S.profile.supervisor_employee_code ? 'i' : 'w'}"><span>👤</span><span>${
       S.profile.supervisor_employee_code
         ? 'คำขอจะส่งถึงหัวหน้างานตามสายอนุมัติ — ' + supervisorLabel()
