@@ -1903,7 +1903,10 @@ function checkDwell(c, now) {
     if (S.dwellStopId) {
       const st = t.stops.find(s => s.id === S.dwellStopId);
       if (st && !st.depart_at) { st.depart_at = new Date(now).toISOString();
-        st.depart_lat = c.latitude; st.depart_lng = c.longitude; st._dirty = 1; }
+        st.depart_lat = c.latitude; st.depart_lng = c.longitude;
+        // นาทีที่แวะจริง = ออก − เข้า (เดิมค้างค่าตอนสร้าง เช่น 20/30 ทำให้ไม่ตรงเวลาออก)
+        st.dwell_minutes = Math.max(0, Math.round((now - new Date(st.arrive_at)) / 60000));
+        st._dirty = 1; }
       S.dwellStopId = null;
     }
     S.dwellAnchor = { lat: c.latitude, lng: c.longitude }; S.dwellSince = now; return;
@@ -1959,7 +1962,49 @@ function detectDwellStops(t) {
     t.stops.forEach((s, i) => s.seq = i + 1);
     saveTrip();
   }
+  mergeDwellStops(t);   // รวมจุดจอดที่ทับเวลากัน (live + batch ของช่วงเดียวกัน)
   return added;
+}
+
+/* รวมจุดจอดอัตโนมัติที่ "ช่วงเวลาทับกัน" ให้เหลือจุดเดียว
+   ปัญหา: checkDwell (สด) กับ detectDwellStops (ย้อนดูทั้งเส้นตอนอยู่เบื้องหลัง)
+   อาจสร้างจุดของการจอดครั้งเดียวกันซ้อนกัน 2 จุด (เห็นเป็น "ออก 17:18" ซ้ำ)
+   -> เก็บจุดเดียว: เข้าเร็วสุด · ออกช้าสุด · นาทีคำนวณใหม่ · คงข้อมูลงาน/สาขาถ้ามีฝั่งใด
+   จุดที่โดนรวมและเคยขึ้น server แล้ว เก็บ id ไว้ลบฝั่ง server ตอน sync */
+function mergeDwellStops(t) {
+  if (!t || (t.stops || []).length < 2) return [];
+  const isHome = s => s.source === 'home_start' || s.source === 'home_end';
+  const auto = s => s.source === 'auto_dwell' || s.source === 'manual_past';
+  const endMs = s => s.depart_at ? new Date(s.depart_at).getTime()
+    : new Date(s.arrive_at).getTime() + (s.dwell_minutes || 0) * 60000;
+  const sorted = t.stops.slice().sort((a, b) => new Date(a.arrive_at) - new Date(b.arrive_at));
+  const kept = [], removed = [];
+  for (const s of sorted) {
+    const prev = kept[kept.length - 1];
+    const overlap = prev && auto(prev) && auto(s) && !isHome(prev) && !isHome(s)
+      && new Date(s.arrive_at).getTime() <= endMs(prev) + 60000;   // ทับกันหรือชนกัน
+    if (!overlap) { kept.push(s); continue; }
+    // ขยายจุดเดิมให้ครอบช่วงของทั้งคู่
+    if (endMs(s) > endMs(prev)) {
+      prev.depart_at = s.depart_at || new Date(endMs(s)).toISOString();
+      if (s.depart_lat != null) { prev.depart_lat = s.depart_lat; prev.depart_lng = s.depart_lng; }
+    }
+    if (!prev.job_type_code && s.job_type_code) {
+      prev.job_type_code = s.job_type_code; prev.job_note = s.job_note; prev.needs_reason = false;
+    }
+    if (!prev.store_code && s.store_code) { prev.store_code = s.store_code; prev.store_name = s.store_name; }
+    if (!prev.place_label && s.place_label) prev.place_label = s.place_label;
+    prev.dwell_minutes = Math.max(0, Math.round((endMs(prev) - new Date(prev.arrive_at).getTime()) / 60000));
+    prev._dirty = 1;
+    removed.push(s.id);
+  }
+  if (removed.length) {
+    t.stops = kept;
+    t.stops.forEach((s, i) => s.seq = i + 1);
+    t._removedStops = (t._removedStops || []).concat(removed);   // ลบฝั่ง server ตอน sync
+    saveTrip();
+  }
+  return removed;
 }
 
 /* เตือนยังไม่ปิดงาน: 21:00 แจ้งพนักงาน · 22:00 แจ้งพนักงาน+หัวหน้า
@@ -2642,17 +2687,20 @@ function viewStopForm() {
 function viewAddPastStop() {
   const t = S.trip;
   if (!t) return go('home');
+  // จับจุดจอดนาน (>20 นาที) จากทั้งเส้นทางก่อน (รวมช่วงที่อยู่เบื้องหลัง) แล้ว mark ให้เห็นบนแผนที่
+  detectDwellStops(t);
   const pts = (t.points || []).filter(p => p.lat != null && p.lng != null);
   if (pts.length < 2) { toast('ยังไม่มีเส้นทางให้เลือกจุด', 1); return go('active'); }
 
   const nodes = [
-    el(`<div class="note i"><span>👆</span><span>แตะบนเส้นทาง (เส้นแดง) ตรงจุดที่คุณเคยแวะ
-      ระบบจะปักหมุดให้ที่จุดพิกัดจริงที่ใกล้ที่สุด แล้วให้เลือกว่าแวะทำอะไร
-      — ใช้เวลาตามที่บันทึกไว้จริง ไม่ต้องอยู่ที่นั่นแล้ว</span></div>`),
-    el('<div class="map" id="pmap" style="height:58vh"></div>'),
-    el('<div class="lb" id="phint" style="text-align:center;margin-top:6px">เลือกจุดจากเส้นทางได้เลย</div>'),
+    el(`<div class="note i"><span>📍</span><span>จุด <b style="color:var(--y-dk)">สีเหลือง</b> คือที่ที่คุณ
+      <b>จอดนานเกิน ${CFG.dwellMinutes} นาที</b> — แตะที่จุดเพื่อใส่ชื่อสถานที่ + ระบุว่าแวะทำอะไร
+      (จุด <b style="color:var(--b)">สีน้ำเงิน</b> = ระบุแล้ว) · หรือแตะจุดใดบนเส้นทาง (เส้นแดง) เพื่อเพิ่มจุดเอง</span></div>`),
+    el('<div class="map" id="pmap" style="height:54vh"></div>'),
+    el('<button class="btn gh" id="pback" style="margin-top:8px">← กลับหน้ากำลังปฏิบัติงาน</button>'),
   ];
   shell('เพิ่มจุดย้อนหลัง', nodes, { back: () => go('active'), tabs: false, actions: false });
+  $('#pback').onclick = () => go('active');
 
   const box = $('#pmap');
   if (typeof L === 'undefined') {
@@ -2666,13 +2714,21 @@ function viewAddPastStop() {
     const all = pts.map(p => [p.lat, p.lng]);
     const line = L.polyline(all, { color: '#E30613', weight: 6, opacity: .85 }).addTo(map);
     map.fitBounds(line.getBounds(), { padding: [26, 26] });
-    // จุดที่มีอยู่แล้ว
-    (t.stops || []).forEach(st => {
-      if (st.arrive_lat == null) return;
-      L.circleMarker([st.arrive_lat, st.arrive_lng], { radius: 7, color: '#fff', weight: 2.5,
-        fillColor: st.job_type_code ? '#1B3A93' : '#C9A227', fillOpacity: 1 }).addTo(map)
-        .bindPopup('จุดที่ ' + (st.seq || '?'));
-    });
+    // จุดจอดนานที่ระบบ mark ให้ (auto_dwell / เพิ่มย้อนหลัง) — แตะเพื่อระบุ/ใส่ชื่อสถานที่
+    const drawStops = () => {
+      (t.stops || []).forEach(st => {
+        if (st.arrive_lat == null) return;
+        const home = st.source === 'home_start' || st.source === 'home_end';
+        const unspec = !st.job_type_code;
+        const cm = L.circleMarker([st.arrive_lat, st.arrive_lng],
+          { radius: home ? 7 : 11, weight: 3, color: '#fff',
+            fillColor: home ? '#00A651' : unspec ? '#E6BE00' : '#1B3A93', fillOpacity: 1 }).addTo(map);
+        cm.bindTooltip((unspec ? '⏱ แวะ ' : '✓ ') + (st.dwell_minutes || 0) + ' นาที — แตะเพื่อระบุ',
+          { direction: 'top' });
+        if (!home) cm.on('click', () => askDwell(st.id, st.dwell_minutes || 0));
+      });
+    };
+    drawStops();
     let marker = null;
     map.on('click', async (e) => {
       // snap ไปจุดพิกัดจริงที่ใกล้ที่สุด (จะได้เวลาจริงที่บันทึกไว้ด้วย)
@@ -3497,6 +3553,8 @@ async function viewHistory() {
     if (lt && lt.user_id === S.profile.id && !rows.some(r => r.id === lt.id))
       rows.unshift({ ...lt, start_at: lt.startAt });
   });
+  // เรียงใหม่จากใหม่ไปเก่าเสมอ (ทริปในเครื่องที่ยัง sync ไม่ครบอาจไม่ได้อยู่หน้าสุดตามวันที่)
+  rows.sort((a, b) => new Date(b.start_at || b.startAt) - new Date(a.start_at || a.startAt));
 
   // จัดกลุ่มตามเดือน (MMM-YY เช่น Aug-26) แล้วแสดงแต่ละเดือนแยกกัน
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -5371,6 +5429,12 @@ async function syncOne(t) {
       { onConflict: 'session_id,at', ignoreDuplicates: true });
     if (error) throw error;
     batch.forEach(p => p._s = 1);
+  }
+  // ลบจุดที่ถูกรวม (mergeDwellStops) ออกจาก server ด้วย — กันจุดจอดซ้ำค้างฝั่ง server
+  if ((t._removedStops || []).length) {
+    const { error } = await sb.from('stops').delete().in('id', t._removedStops);
+    if (!error) t._removedStops = [];
+    else S.lastSyncError = 'ลบจุดซ้ำ: ' + error.message;
   }
   // จุดปฏิบัติงาน + น้ำมัน — ถ้า error อย่ากลืนเงียบ (เคยทำให้จุดหายโดยไม่รู้ตัว)
   for (const s of (t.stops || []).filter(x => x._dirty)) {
