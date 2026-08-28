@@ -31,10 +31,14 @@ self.addEventListener('fetch', (e) => {
   // อย่าแตะ Supabase / API ใด ๆ — ต้องได้ข้อมูลสด หรือ error จริงเพื่อให้แอปเข้าคิวออฟไลน์
   if (url.origin !== self.location.origin) return;
 
-  // network-first สำหรับหน้าเว็บ เพื่อให้ผู้ใช้ได้เวอร์ชันใหม่เสมอเมื่อออนไลน์
+  // network-first เพื่อให้ได้เวอร์ชันใหม่เสมอเมื่อออนไลน์
+  // หน้าเว็บ (navigation/HTML) ใช้ cache:'reload' ข้าม HTTP cache ของ CDN (GitHub Pages แคช ~10 นาที)
+  // ไม่งั้นเครื่องที่ติดตั้งไว้จะได้ index.html เก่าค้างเป็นช่วง ๆ แม้ deploy ใหม่แล้ว
+  const isDoc = r.mode === 'navigate' || r.destination === 'document'
+    || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
   e.respondWith((async () => {
     try {
-      const res = await fetch(r);
+      const res = await fetch(r, isDoc ? { cache: 'reload' } : undefined);
       if (res && res.ok) (await caches.open(V)).put(r, res.clone());
       return res;
     } catch {
