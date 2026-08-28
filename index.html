@@ -2490,6 +2490,16 @@ function viewAddPastStop() {
         if (d < bd) { bd = d; bi = i; }
       }
       const best = pts[bi]; if (!best) return;
+      // กันเพิ่มจุดซ้ำ — มีจุดอยู่แล้วที่ "เวลาเดียวกัน (±5 นาที) และตำแหน่งเดียวกัน (~120 ม.)"
+      const bestT = new Date(best.at).getTime();
+      const dupe = (t.stops || []).find(s =>
+        s.arrive_at && Math.abs(new Date(s.arrive_at).getTime() - bestT) < 5 * 60000
+        && s.arrive_lat != null && haversineM(s.arrive_lat, s.arrive_lng, best.lat, best.lng) < 120);
+      if (dupe) {
+        toast('บริเวณ/ช่วงเวลานี้มีจุดอยู่แล้ว (จุดที่ ' + (dupe.seq || '?') + ' เข้า '
+          + thTime(new Date(dupe.arrive_at)) + ') — เลือกจุดอื่นบนเส้นทาง', 1, 8000);
+        return;
+      }
       if (marker) map.removeLayer(marker);
       marker = L.marker([best.lat, best.lng]).addTo(map);
       const nb = pts[bi + 1];   // จุดถัดไป = ตอนออกจากที่นี่
@@ -4886,16 +4896,18 @@ async function syncOne(t) {
     if (error) throw error;
     batch.forEach(p => p._s = 1);
   }
-  // จุดปฏิบัติงาน + น้ำมัน
+  // จุดปฏิบัติงาน + น้ำมัน — ถ้า error อย่ากลืนเงียบ (เคยทำให้จุดหายโดยไม่รู้ตัว)
   for (const s of (t.stops || []).filter(x => x._dirty)) {
     const { _dirty, ...row2 } = s;
     const { error } = await sb.from('stops').upsert(row2);
     if (!error) delete s._dirty;
+    else S.lastSyncError = 'จุดปฏิบัติงาน: ' + error.message;
   }
   for (const f of (t.fuels || []).filter(x => x._dirty)) {
     const { _dirty, ...row2 } = f;
     const { error } = await sb.from('fuel_records').upsert(row2);
     if (!error) delete f._dirty;
+    else S.lastSyncError = 'น้ำมัน: ' + error.message;
   }
   // รูป
   for (const m of (t.media || []).filter(x => !x._uploaded)) {
