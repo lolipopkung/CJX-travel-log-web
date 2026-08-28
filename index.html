@@ -915,7 +915,8 @@ function viewVehicle(opts = {}) {
 /* เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน ไม่ใช่แค่แก้ตัวอักษรบนป้าย
    จึงต้องกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่ แล้วให้หัวหน้าอนุมัติ
    อนุมัติแล้วระบบทับข้อมูลรถประจำคันเดิม (รถประจำมีได้คันเดียว)  */
-async function viewPlateChange() {
+async function viewPlateChange(mode) {
+  const fleetNew = mode === 'fleet_new';   // โหมด "ขอ Fleet card ใหม่" (ใช้ฟอร์มเดียวกับเปลี่ยนรถประจำ)
   const m = S.master, main = primaryVehicle();
   if (!main) { toast('ยังไม่มีรถประจำในระบบ', 1); return go('garage'); }
 
@@ -923,19 +924,22 @@ async function viewPlateChange() {
     .eq('user_id', S.profile.id).eq('status', 'pending').limit(20);
   const pend = (mine || []).find(r => r.vehicle_spec);
   if (pend) {
-    return shell('เปลี่ยนรถประจำ', [
+    return shell(fleetNew ? 'ขอ Fleet card ใหม่' : 'เปลี่ยนรถประจำ', [
       el(`<div class="note w"><span>⏳</span><span><b>มีคำขอรออนุมัติอยู่แล้ว</b><br>
-        ขอเปลี่ยนเป็นทะเบียน <span class="mono">${esc(pend.new_value)}</span><br>
-        ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน</span></div>`),
+        ทะเบียน <span class="mono">${esc(pend.new_value)}</span> — ยื่นซ้ำไม่ได้ รอหัวหน้าอนุมัติก่อน</span></div>`),
     ], { back: () => go('requests'), tabs: true, actions: false });
   }
 
   let own = main.ownership;
   const b = el(`<main>
-    <div class="note i"><span>🚗</span><span>ใช้เมื่อ<b>เปลี่ยนรถที่ใช้ประจำแบบถาวร</b>
-
+    ${fleetNew ? `<div class="note i"><span>💳</span><span>
+      <b>ใช้ส่งคำขอสำหรับพนักงานที่ยังไม่เคยได้รับ Fleet card เท่านั้น</b><br>
+      • พนักงานที่จะยื่นขอ Fleet card ได้ ต้องเป็นพนักงานที่<b>ผ่านทดลองงานแล้ว</b>เท่านั้น<br>
+      • เงื่อนไขการพิจารณาให้ Fleet card และโควต้าน้ำมันที่จะได้รับ ขึ้นอยู่กับเกณฑ์ของบริษัทฯ</span></div>
+    <button class="btn gh" id="tofleetchg" style="margin-bottom:4px">💳 บัตรชำรุด / บัตรหาย? ไปที่ "เปลี่ยนเลข Fleet card"</button>`
+    : `<div class="note i"><span>🚗</span><span>ใช้เมื่อ<b>เปลี่ยนรถที่ใช้ประจำแบบถาวร</b>
       ถ้าแค่ใช้รถคันอื่นชั่วคราวเพราะรถเสีย ให้เลือก
-      <b>"ใช้รถทดแทนชั่วคราว"</b> แทน</span></div>
+      <b>"ใช้รถทดแทนชั่วคราว"</b> แทน</span></div>`}
 
     <div class="card"><h3>รถประจำคันปัจจุบัน</h3>
       <div class="mono" style="font-size:17px;font-weight:800;letter-spacing:1px;margin-top:5px">${esc(main.plate)}</div>
@@ -962,9 +966,12 @@ async function viewPlateChange() {
         <label class="f"><span>ชนิดน้ำมัน / พลังงาน</span><select id="nft"><option value="">— เลือก —</option>
           ${m.fuel_types.map(f => `<option value="${esc(f.code)}">${esc(f.name_th)}</option>`).join('')}</select></label>
         <div id="nfw"></div>
-        <label class="f"><span>หมายเลข Fleet card ของรถคันใหม่ (ถ้ามี)</span>
+        ${fleetNew ? `<label class="f"><span>หมายเลข Fleet card ของรถคันใหม่</span>
+          <input id="nfc" value="หลังจากได้รับอนุมัติจากฝ่ายบัญชี เลข Fleet card จะอัพเดทให้อัตโนมัติ" readonly
+            style="color:var(--soft);font-size:12.5px"></label>`
+        : `<label class="f"><span>หมายเลข Fleet card ของรถคันใหม่ (ถ้ามี)</span>
           <input id="nfc" inputmode="numeric"></label>
-        <div class="hint" id="nfch">รถบริษัทต้องระบุ · รถส่วนตัวที่ได้รับบัตรก็กรอกได้</div>
+        <div class="hint" id="nfch">รถบริษัทต้องระบุ · รถส่วนตัวที่ได้รับบัตรก็กรอกได้</div>`}
       </div></div>
 
     <label class="f"><span>เหตุผล (บังคับ)</span>
@@ -978,13 +985,15 @@ async function viewPlateChange() {
     <button class="btn" id="nsub">ส่งคำขอให้หัวหน้าอนุมัติ</button>
   </main>`);
 
-  shell('เปลี่ยนรถประจำ (ถาวร)', [...b.childNodes],
+  shell(fleetNew ? 'ขอ Fleet card ใหม่' : 'เปลี่ยนรถประจำ (ถาวร)', [...b.childNodes],
         { back: () => go('requests'), tabs: true, actions: false });
+
+  if ($('#tofleetchg')) $('#tofleetchg').onclick = () => go('requests', { preset: 'fleet_card' });
 
   $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
     own = x.dataset.o;
     $('#own').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
-    $('#nfch').textContent = own === 'company'
+    if ($('#nfch')) $('#nfch').textContent = own === 'company'
       ? 'รถบริษัท — ต้องระบุหมายเลข Fleet card'
       : 'รถส่วนตัวที่ได้รับบัตรก็กรอกได้ ไม่บังคับ';
   });
@@ -1021,11 +1030,32 @@ async function viewPlateChange() {
     const nOther = nIsOther($('#nmd').value);
     const nModelFree = nOther ? $('#nmf').value.trim() : null;
     if (nOther && !nModelFree) return toast('เลือกรุ่น "อื่นๆ" แล้ว กรุณาพิมพ์ชื่อรุ่น', 1);
-    if (own === 'company' && !$('#nfc').value.trim())
+    // โหมดขอบัตรใหม่: ไม่ต้องกรอกเลขบัตร (บัญชีออกให้ทีหลัง) — โหมดเปลี่ยนรถ: รถบริษัทต้องระบุ
+    if (!fleetNew && own === 'company' && !$('#nfc').value.trim())
       return toast('รถบริษัทต้องระบุหมายเลข Fleet card', 1);
     if ($('#nr').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
 
     e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
+
+    // โหมด "ขอ Fleet card ใหม่" — ส่งเป็นตั๋ว fleet_card (มี flow บัญชีออกบัตร) พร้อมสเปครถใน new_value
+    // ไม่ใช้ submit_vehicle_change_request เพราะรถคันเดิมจะติด NOTHING_CHANGED
+    if (fleetNew) {
+      const brandName = (m.brands.find(x => x.id === +$('#nbr').value) || {}).name || '';
+      const modelName = nModelFree || (m.models.find(x => x.id === +$('#nmd').value) || {}).name || '';
+      const fuelName = (m.fuel_types.find(x => x.code === $('#nft').value) || {}).name_th || $('#nft').value;
+      const summary = `${plate} · ${brandName} ${modelName} · ${fuelName} · ${own === 'company' ? 'รถบริษัท' : 'รถส่วนตัว'}`;
+      const { data, error } = await sb.rpc('submit_change_request', {
+        p_type: 'fleet_card', p_field: 'ขอ Fleet card ใหม่ (ไม่เคยมีบัตร)',
+        p_old: '(ยังไม่เคยมี Fleet card)', p_new: summary,
+        p_reason: $('#nr').value.trim(), p_vehicle: main.id, p_reason_code: 'other' });
+      if (error || data?.ok !== true) {
+        e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
+        return toast(error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ', 1);
+      }
+      toast(data.has_supervisor ? 'ส่งคำขอ Fleet card ใหม่แล้ว รอหัวหน้าอนุมัติ' : 'บันทึกคำขอแล้ว');
+      return go('requests');
+    }
+
     const { data, error } = await sb.rpc('submit_vehicle_change_request', {
       p_plate: plate, p_province_id: +$('#npv').value,
       p_brand_id: +$('#nbr').value, p_model_id: +$('#nmd').value,
@@ -2071,6 +2101,8 @@ function viewActive() {
   const stopList = (t.stops || []).map(s => {
     const open = !s.job_type_code;
     const home = s.source === 'home_start' || s.source === 'home_end';
+    // ลบได้เฉพาะจุดที่พนักงานเพิ่มเอง — จุดที่ "ระบบจับพิกัดเอง" (auto_dwell) ลบไม่ได้ (กันซ่อนจุดที่จอดนานจริง)
+    const canDel = !home && s.source !== 'auto_dwell';
     const openLabel = s.source === 'manual_past' ? 'เพิ่มย้อนหลัง — รอระบุ'
       : `แวะ ${s.dwell_minutes || 0} นาที — รอระบุ`;
     return `<div class="item">
@@ -2084,7 +2116,7 @@ function viewActive() {
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         ${open ? `<button class="link" data-cls="${s.id}" style="padding:0 4px">เลือกเลย</button>`
                : (!s.depart_at ? `<button class="link" data-out="${s.id}" style="padding:0 4px">ออกจากจุดนี้</button>` : '')}
-        ${home ? '' : `<button class="link" data-del="${s.id}" style="padding:0 4px;color:var(--r)">ลบ</button>`}
+        ${canDel ? `<button class="link" data-del="${s.id}" style="padding:0 4px;color:var(--r)">ลบ</button>` : ''}
       </div>
     </div>`;
   }).join('') || '<div class="lb">ยังไม่มีจุดปฏิบัติงาน — ถึงที่หมายแล้วกด "เพิ่มจุด"</div>';
@@ -3395,7 +3427,9 @@ async function viewAlerts() {
 }
 
 const REQ_TYPES = [
-  ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย / ได้บัตรใหม่'],
+  // ขอบัตรใหม่ (ไม่เคยมีบัตร) = กรอกสเปครถเต็มเหมือนเปลี่ยนรถประจำ แล้วบัญชีออกบัตรให้
+  ['fleet_new', 'ขอ Fleet card ใหม่', 'กรณีเป็นพนักงานที่ไม่เคยได้รับ Fleet Card มาก่อน'],
+  ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย / ออกบัตรใหม่'],
   // เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน จึงพาไปกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่
   ['plate', 'เปลี่ยนรถประจำ (ถาวร)', 'ซื้อรถใหม่ / เปลี่ยนรถที่ใช้ประจำ'],
   // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
@@ -3449,6 +3483,7 @@ async function viewRequests(opts = {}) {
       document.querySelectorAll('[data-t]').forEach(node => node.onclick = () => {
         if (node.dataset.t === 'vehicle_replace') return go('backup');
         if (node.dataset.t === 'plate') return go('platechange');
+        if (node.dataset.t === 'fleet_new') return go('fleetnew');
         type = node.dataset.t; render();
       });
       $('#goreplace').onclick = () => go('backup');
@@ -3503,6 +3538,7 @@ async function viewRequests(opts = {}) {
       // 2 ประเภทนี้มีหน้าเฉพาะของตัวเอง ไม่ใช้ฟอร์มกลาง
       if (n.dataset.t === 'vehicle_replace') return go('backup');
       if (n.dataset.t === 'plate') return go('platechange');
+      if (n.dataset.t === 'fleet_new') return go('fleetnew');
       type = n.dataset.t; render();
     });
     if ($('#rc')) $('#rc').querySelectorAll('button').forEach(x => x.onclick = () => {
@@ -5062,6 +5098,7 @@ function go(v, opts) {
   const map = {
     home: viewHome, garage: viewGarage, active: viewActive, history: viewHistory,
     backup: viewBackupRequest, platechange: viewPlateChange,
+    fleetnew: () => viewPlateChange('fleet_new'),
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
     syncstatus: viewSyncStatus, pinreport: viewPinReport, addpast: viewAddPastStop,
