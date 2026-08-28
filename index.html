@@ -523,7 +523,7 @@ function tabs() {
   const t = el(`<div class="nav">
     <button data-v="home" class="${S.tab === 'home' ? 'on' : ''}"><span class="g">🏠</span>หน้าหลัก</button>
     <button data-v="history" class="${S.tab === 'history' ? 'on' : ''}"><span class="g">🕘</span>ประวัติ</button>
-    <button data-v="alerts" class="${S.tab === 'alerts' ? 'on' : ''}"><span class="g">🔔</span>แจ้งเตือน${S.alerts ? `<span class="badge">${S.alerts}</span>` : ''}</button>
+    <button data-v="alerts" class="${S.tab === 'alerts' ? 'on' : ''}"><span class="g">🔔</span>แจ้งเตือน${(() => { const n = (S.alerts || 0) + (['admin', 'superadmin'].includes(S.profile?.role) ? (S.fleetPending || 0) : 0); return n ? `<span class="badge">${n}</span>` : ''; })()}</button>
     ${isSup ? `<button data-v="approvals" class="${S.tab === 'approvals' ? 'on' : ''}">
       <span class="g">✅</span>อนุมัติ${S.approvals ? `<span class="badge">${S.approvals}</span>` : ''}</button>` : ''}
     <button data-v="requests" class="${S.tab === 'requests' ? 'on' : ''}">
@@ -919,8 +919,8 @@ function fleetFlowSteps(active = -1) {
   const steps = [
     ['📝', 'พนักงานกดส่งคำขอ'],
     ['👤', 'หัวหน้างานพิจารณาอนุมัติ'],
-    ['🏦', 'บัญชีทำเรื่องขอออก Fleet card'],
-    ['🎁', 'บัญชีได้บัตรแล้ว — แจ้งเตือนให้พนักงานมารับบัตร'],
+    ['🏦', 'บัญชีออกบัตร & กรอกเลข Fleet card + PIN (แจ้งพนักงาน)'],
+    ['✅', 'พนักงานยืนยันรับบัตร (Received) — ปิดคำขอ'],
   ];
   const rows = steps.map(([ic, tx], i) => {
     const done = active > i, cur = active === i, todo = !done && !cur;
@@ -943,9 +943,47 @@ function fleetFlowSteps(active = -1) {
   }).join('');
   return `<div class="card" style="padding:13px"><h3 style="margin-bottom:10px">ขั้นตอนการขอ Fleet card</h3>
     ${rows}
-    <div class="hint" style="padding-top:9px">เมื่อบัญชีได้บัตรแล้ว ระบบจะส่งแจ้งเตือนในแท็บ
-      🔔 แจ้งเตือน ของคุณให้มารับบัตร จากนั้นกด "ยืนยันว่ารับบัตรแล้ว" เพื่ออัปเดตเลขบัตรอัตโนมัติ</div>
+    <div class="hint" style="padding-top:9px">เมื่อบัญชีกรอกเลขบัตร ระบบจะแจ้งเตือนในแท็บ
+      🔔 แจ้งเตือน ของคุณพร้อมเลข Fleet card &amp; PIN ทันที จากนั้นกด "ยืนยันรับบัตรแล้ว"
+      เพื่อปิดคำขอและบันทึกเลขบัตรเข้าโรงรถ</div>
   </div>`;
+}
+
+const FLEET_DOC_LABELS = { reg: 'สำเนาทะเบียนรถ', idcard: 'สำเนาบัตร ปชช. ผู้ถือบัตร',
+  consent: 'หนังสือยินยอมให้ใช้รถ', plate_photo: 'รูปถ่ายรถเห็นป้ายทะเบียน',
+  slip: 'หลักฐานการโอนค่าธรรมเนียม', oldcard: 'รูปถ่ายหน้าบัตร Fleet card ใบเดิม' };
+
+// ค่าธรรมเนียมออกบัตรใหม่ (บาท) ตามสาเหตุ
+const FLEET_FEE = { damaged: 100, lost: 300 };
+// กล่องแจ้งค่าธรรมเนียม + บัญชีรับโอน (แสดงในหัวข้อ "เปลี่ยนเลข Fleet card")
+function fleetFeeBox(rc) {
+  const fee = FLEET_FEE[rc];
+  if (!fee) return `<div class="note i"><span>ℹ️</span><span>กรณีนี้พิจารณาตามเกณฑ์ของบริษัทฯ
+    หากมีค่าธรรมเนียม ฝ่ายบัญชีจะแจ้งให้ทราบภายหลัง</span></div>`;
+  return `<div class="note w"><span>💰</span><span>
+    <b>กรณี${rc === 'damaged' ? 'บัตรชำรุด' : 'บัตรสูญหาย'}: มีค่าธรรมเนียมออกบัตรใหม่ ${fee} บาท</b><br>
+    โอนค่าธรรมเนียมไปที่<br>
+    ธนาคารกสิกรไทย · เลขบัญชี <b class="mono">001-1-37546-4</b><br>
+    ชื่อบัญชี บริษัท ทีดี ตะวันแดง จำกัด<br>
+    แล้วแนบสลิปการโอนด้านล่าง</span></div>`;
+}
+
+/* โหลดเอกสารแนบของคำขอ -> ลิงก์เปิดดู (signed URL) ใส่ลงกล่อง box */
+async function renderFleetDocs(box, requestId) {
+  if (!box) return;
+  try {
+    const { data } = await sb.from('change_request_files').select('*')
+      .eq('request_id', requestId).order('created_at');
+    if (!data || !data.length) { box.innerHTML = '<div class="lb">— ไม่มีเอกสารแนบ —</div>'; return; }
+    const items = await Promise.all(data.map(async f => {
+      const label = FLEET_DOC_LABELS[f.doc_type] || f.doc_type;
+      const { data: s } = await sb.storage.from(CFG.bucket).createSignedUrl(f.path, 600);
+      return s?.signedUrl
+        ? `<a class="link" href="${s.signedUrl}" target="_blank" rel="noopener" style="display:block;padding:4px 0">📎 ${esc(label)}</a>`
+        : `<div class="lb">📎 ${esc(label)} (เปิดไม่ได้)</div>`;
+    }));
+    box.innerHTML = items.join('');
+  } catch { box.innerHTML = '<div class="lb">โหลดเอกสารไม่ได้</div>'; }
 }
 
 /* แปลงสถานะคำขอ -> ขั้นใน timeline (ใช้กับคำขอ fleet card ที่ยื่นแล้ว) */
@@ -953,8 +991,8 @@ function fleetFlowActive(r) {
   if (!r) return 0;                                   // เพิ่งจะยื่น
   if (r.status === 'rejected' || r.status === 'cancelled') return -1;
   if (r.fulfillment_status === 'collected') return 4; // จบครบทุกขั้น
-  if (r.fulfillment_status === 'issued') return 3;    // ได้บัตรแล้ว รอมารับ
-  if (r.status === 'approved') return 2;              // บัญชีกำลังออกบัตร
+  if (r.fulfillment_status === 'issued') return 3;    // ได้บัตรแล้ว รอพนักงานยืนยันรับ
+  if (r.status === 'approved') return 2;              // บัญชีกำลังออกบัตร/กรอกเลข
   return 1;                                           // รอหัวหน้าอนุมัติ
 }
 
@@ -1026,6 +1064,20 @@ async function viewPlateChange(mode) {
         <div class="hint" id="nfch">รถบริษัทต้องระบุ · รถส่วนตัวที่ได้รับบัตรก็กรอกได้</div>`}
       </div></div>
 
+    ${fleetNew ? `<div class="card"><h3>เอกสารแนบประกอบการพิจารณา</h3>
+      <div class="sub">ถ่ายรูป/แนบไฟล์ให้ครบเพื่อให้หัวหน้าและบัญชีพิจารณา (ไฟล์รูปหรือ PDF)</div>
+      ${[
+        ['reg', 'สำเนาทะเบียนรถ', true],
+        ['idcard', 'สำเนาบัตรประชาชนผู้ถือบัตร Fleet card', true],
+        ['consent', 'หนังสือยินยอมให้ใช้รถ (กรณีผู้ถือบัตรไม่ใช่เจ้าของรถ)', false],
+        ['plate_photo', 'รูปถ่ายรถที่เห็นป้ายทะเบียนชัดเจน (ป้ายขาว)', true],
+      ].map(([k, label, req]) => `<label class="f" style="margin-top:10px">
+        <span>${label} ${req ? '<b style="color:var(--r)">*</b>' : '<span class="lb">(ถ้ามี)</span>'}</span>
+        <input type="file" id="doc_${k}" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+        <span class="lb" id="docn_${k}"></span></label>`).join('')}
+      <div class="hint" style="padding-top:6px">* จำเป็นต้องแนบ — ยกเว้นหนังสือยินยอมที่แนบเฉพาะกรณีผู้ถือบัตรไม่ใช่เจ้าของรถ</div>
+    </div>` : ''}
+
     <label class="f"><span>เหตุผล (บังคับ)</span>
       <textarea id="nr"></textarea></label>
 
@@ -1041,6 +1093,16 @@ async function viewPlateChange(mode) {
         { back: () => go('requests'), tabs: true, actions: false });
 
   if ($('#tofleetchg')) $('#tofleetchg').onclick = () => go('requests', { preset: 'fleet_card' });
+
+  // เอกสารแนบ (เฉพาะโหมดขอบัตรใหม่) — โชว์ชื่อไฟล์ที่เลือก
+  const DOC_KEYS = ['reg', 'idcard', 'consent', 'plate_photo'];
+  if (fleetNew) DOC_KEYS.forEach(k => {
+    const inp = $('#doc_' + k);
+    if (inp) inp.onchange = () => {
+      const f = inp.files?.[0];
+      $('#docn_' + k).textContent = f ? '✓ ' + f.name + ' (' + Math.round(f.size / 1024) + ' KB)' : '';
+    };
+  });
 
   $('#own').querySelectorAll('button').forEach(x => x.onclick = () => {
     own = x.dataset.o;
@@ -1087,6 +1149,14 @@ async function viewPlateChange(mode) {
       return toast('รถบริษัทต้องระบุหมายเลข Fleet card', 1);
     if ($('#nr').value.trim().length < 5) return toast('อธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
 
+    // โหมดขอบัตรใหม่ต้องแนบเอกสารบังคับให้ครบก่อน
+    if (fleetNew) {
+      const REQ_DOCS = { reg: 'สำเนาทะเบียนรถ', idcard: 'สำเนาบัตรประชาชนผู้ถือบัตร',
+        plate_photo: 'รูปถ่ายรถเห็นป้ายทะเบียน' };
+      for (const [k, label] of Object.entries(REQ_DOCS))
+        if (!$('#doc_' + k)?.files?.[0]) return toast('กรุณาแนบ: ' + label, 1);
+    }
+
     e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
 
     // โหมด "ขอ Fleet card ใหม่" — ส่งเป็นตั๋ว fleet_card (มี flow บัญชีออกบัตร) พร้อมสเปครถใน new_value
@@ -1103,6 +1173,25 @@ async function viewPlateChange(mode) {
       if (error || data?.ok !== true) {
         e.target.disabled = false; e.target.textContent = 'ส่งคำขอให้หัวหน้าอนุมัติ';
         return toast(error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ', 1);
+      }
+      // อัปโหลดเอกสารแนบเข้าบัคเก็ต + ผูกกับคำขอ
+      e.target.textContent = 'กำลังอัปโหลดเอกสาร…';
+      const rid = data.request_id;
+      for (const k of DOC_KEYS) {
+        const f = $('#doc_' + k)?.files?.[0];
+        if (!f) continue;
+        try {
+          const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+          const path = `${S.profile.id}/fleet_req/${rid}/${k}_${uuid()}.${ext}`;
+          const up = await sb.storage.from(CFG.bucket).upload(path, f,
+            { contentType: f.type || 'application/octet-stream', upsert: true });
+          if (up.error) throw up.error;
+          await sb.from('change_request_files').insert(
+            { request_id: rid, doc_type: k, path, uploaded_by: S.profile.id });
+        } catch (err) {
+          console.warn('doc upload', k, err?.message || err);
+          toast('อัปโหลดเอกสารบางไฟล์ไม่สำเร็จ — แจ้งหัวหน้า/บัญชีให้ขอใหม่ได้', 1);
+        }
       }
       toast(data.has_supervisor ? 'ส่งคำขอ Fleet card ใหม่แล้ว รอหัวหน้าอนุมัติ' : 'บันทึกคำขอแล้ว');
       return go('requests');
@@ -3466,7 +3555,16 @@ async function viewAlerts() {
       </div></div>`))
     : [el('<div class="note i"><span>🔔</span><span>ยังไม่มีการแจ้งเตือน</span></div>')];
   nodes.unshift(el('<button class="btn gh" id="rall">ทำเครื่องหมายว่าอ่านทั้งหมด</button>'));
+  // บัญชี/Admin: แถบเตือนคำขอ Fleet card ที่รอออกบัตร (คลิกไปหน้าออกบัตร)
+  await refreshFleetPending();
+  if (S.fleetPending > 0) nodes.unshift(el(`<div class="card" id="fcbanner"
+      style="cursor:pointer;background:var(--y);border-color:var(--y-dk);border-width:2px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:20px">💳</span><div style="flex:1">
+          <div class="vl">มีคำขอ Fleet card รอออกบัตร ${S.fleetPending} รายการ</div>
+          <div class="lb" style="color:var(--ink)">แตะเพื่อไปกรอกเลขบัตร & แจ้งพนักงาน ›</div></div></div></div>`));
   shell('กล่องแจ้งเตือน', nodes, { tabs: true });
+  if ($('#fcbanner')) $('#fcbanner').onclick = () => go('fleetissue');
   document.querySelectorAll('[data-sd]').forEach(b => b.onclick = (ev) => {
     ev.stopPropagation();
     viewSessionDetail(b.dataset.sd);
@@ -3558,6 +3656,17 @@ async function viewRequests(opts = {}) {
           <button data-r="damaged" class="on">บัตรชำรุด</button>
           <button data-r="lost">บัตรหาย</button>
           <button data-r="other">อื่นๆ</button></div>
+        <div id="feebox" style="margin-top:10px">${fleetFeeBox(reasonCode)}</div>
+        <div class="lb" style="margin-top:11px">เลข Fleet card ใบเดิม</div>
+        <div class="vl mono">${esc(vehicle?.fleet_card_no || '(ไม่มีในระบบ)')}</div>
+        <div class="lb" style="margin-top:11px">แนบหลักฐานประกอบการพิจารณา</div>
+        <label class="f" style="margin-top:6px"><span>หลักฐานการโอนค่าธรรมเนียม <b id="slipreq" style="color:var(--r)">*</b></span>
+          <input type="file" id="doc_slip" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+          <span class="lb" id="docn_slip"></span></label>
+        <label class="f" style="margin-top:8px"><span>รูปถ่ายหน้าบัตร Fleet card ใบเดิม <b id="cardreq" style="color:var(--r)">*</b></span>
+          <input type="file" id="doc_oldcard" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+          <span class="lb" id="docn_oldcard"></span></label>
+        <div class="hint" id="cardhint" style="padding-top:4px"></div>
         <div class="note i" style="margin-top:10px"><span>🏦</span><span>
           <b>ไม่ต้องกรอกเลขบัตรใบใหม่ตอนนี้</b> — หัวหน้าอนุมัติแล้ว ระบบจะส่งเรื่องให้แผนกบัญชี
           ติดต่อธนาคารผู้ออกบัตร เมื่อบัตรมาถึงจะแจ้งให้คุณไปรับ แล้วอัปเดตเลขบัตรให้อัตโนมัติ</span></div>`
@@ -3591,7 +3700,12 @@ async function viewRequests(opts = {}) {
           ${r.decision_note ? '<br>หมายเหตุ: ' + esc(r.decision_note) : ''}
           ${r.fulfillment_status ? '<br><b>' + { pending_issue: '⏳ บัญชีกำลังออกบัตรใบใหม่',
             issued: '🎁 บัตรพร้อมให้รับแล้ว', collected: '✓ รับบัตรแล้ว' }[r.fulfillment_status] + '</b>' : ''}</div>
-        ${r.fulfillment_status === 'issued' ? `<button class="btn" data-got="${r.id}" style="margin-top:8px;padding:9px">✓ ยืนยันว่ารับบัตรแล้ว</button>` : ''}
+        ${r.fulfillment_status === 'issued' ? `<div class="card" style="margin-top:8px;background:#FFFDF0;border-color:var(--y-dk)">
+          <div class="lb">เลข Fleet card ใบใหม่</div>
+          <div class="mono" style="font-size:18px;font-weight:800;letter-spacing:1px">${esc(r.issued_value || '(รอบัญชีระบุ)')}</div>
+          ${r.fleet_card_pin ? `<div class="lb" style="margin-top:5px">PIN</div><div class="mono" style="font-size:16px;font-weight:800;letter-spacing:2px">${esc(r.fleet_card_pin)}</div>` : ''}
+          <div class="hint" style="padding-top:5px">ไปรับบัตรตัวจริงจากฝ่ายบัญชี แล้วกดปุ่มด้านล่างเพื่อปิดคำขอ</div></div>
+          <button class="btn" data-got="${r.id}" style="margin-top:8px;padding:9px">✅ ยืนยันรับบัตรแล้ว (Received)</button>` : ''}
         ${r.status === 'pending' ? `<button class="link" data-cancel="${r.id}" style="padding:6px 0 0;color:var(--r)">ยกเลิกคำขอนี้</button>` : ''}
       </div></div>`).join('')}</div></div>`));
 
@@ -3603,8 +3717,31 @@ async function viewRequests(opts = {}) {
       if (n.dataset.t === 'fleet_new') return go('fleetnew');
       type = n.dataset.t; render();
     });
+    // Fleet card: อัปเดตค่าธรรมเนียม + ป้าย "บังคับ" ตามสาเหตุ
+    const updateFleetReq = () => {
+      if (!isFleet) return;
+      if ($('#feebox')) $('#feebox').innerHTML = fleetFeeBox(reasonCode);
+      // สลิปโอนเงิน: บังคับเมื่อมีค่าธรรมเนียม (ชำรุด/หาย)
+      if ($('#slipreq')) $('#slipreq').style.display = FLEET_FEE[reasonCode] ? '' : 'none';
+      // รูปบัตรใบเดิม: บังคับกรณีบัตรชำรุด (บัตรยังอยู่) · บัตรหายแนบถ้ามี
+      if ($('#cardreq')) $('#cardreq').style.display = reasonCode === 'damaged' ? '' : 'none';
+      if ($('#cardhint')) $('#cardhint').textContent = reasonCode === 'lost'
+        ? 'บัตรหาย: แนบรูปบัตรใบเดิมได้ถ้ามี (ไม่บังคับ)'
+        : reasonCode === 'other' ? 'แนบได้ถ้ามี' : '';
+    };
+    ['slip', 'oldcard'].forEach(k => {
+      const inp = $('#doc_' + k);
+      if (inp) inp.onchange = () => {
+        const f = inp.files?.[0];
+        $('#docn_' + k).textContent = f ? '✓ ' + f.name + ' (' + Math.round(f.size / 1024) + ' KB)' : '';
+      };
+    });
     if ($('#rc')) $('#rc').querySelectorAll('button').forEach(x => x.onclick = () => {
-      reasonCode = x.dataset.r; $('#rc').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x)); });
+      reasonCode = x.dataset.r;
+      $('#rc').querySelectorAll('button').forEach(y => y.classList.toggle('on', y === x));
+      updateFleetReq();
+    });
+    updateFleetReq();
     if ($('#vh')) $('#vh').onchange = e => vehicle = S.vehicles.find(v => v.id === e.target.value);
     document.querySelectorAll('[data-got]').forEach(b => b.onclick = async () => {
       const { data } = await sb.rpc('confirm_fleet_card_collected', { p_request: b.dataset.got });
@@ -3628,6 +3765,13 @@ async function viewRequests(opts = {}) {
       if (reason.length < 5) return toast('กรุณาอธิบายเหตุผลให้หัวหน้าเข้าใจ', 1);
       const newVal = isFleet ? '' : needsDates ? $('#d2').value : ($('#nv')?.value.trim() || '');
       if (!isFleet && !newVal) return toast('กรอกค่าใหม่', 1);
+      // เปลี่ยนเลข Fleet card: บังคับแนบสลิป (ชำรุด/หาย) + รูปบัตรใบเดิม (ชำรุด)
+      if (isFleet) {
+        if (FLEET_FEE[reasonCode] && !$('#doc_slip')?.files?.[0])
+          return toast('กรุณาแนบหลักฐานการโอนค่าธรรมเนียม', 1);
+        if (reasonCode === 'damaged' && !$('#doc_oldcard')?.files?.[0])
+          return toast('กรุณาแนบรูปถ่ายหน้าบัตร Fleet card ใบเดิม', 1);
+      }
       e.target.disabled = true; e.target.textContent = 'กำลังส่ง…';
       const { data, error } = await sb.rpc('submit_change_request', {
         p_type: type, p_field: REQ_TYPES.find(t => t[0] === type)[1],
@@ -3637,6 +3781,26 @@ async function viewRequests(opts = {}) {
         p_reason_code: isFleet ? reasonCode : null });
       if (error || data?.ok !== true) { e.target.disabled = false;
         return toast(error ? friendly(error) : 'ส่งคำขอไม่สำเร็จ', 1); }
+      // อัปโหลดเอกสารแนบ (สลิป + รูปบัตรใบเดิม) ผูกกับคำขอ
+      if (isFleet && data.request_id) {
+        e.target.textContent = 'กำลังอัปโหลดเอกสาร…';
+        for (const k of ['slip', 'oldcard']) {
+          const f = $('#doc_' + k)?.files?.[0];
+          if (!f) continue;
+          try {
+            const ext = (f.name.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+            const path = `${S.profile.id}/fleet_req/${data.request_id}/${k}_${uuid()}.${ext}`;
+            const up = await sb.storage.from(CFG.bucket).upload(path, f,
+              { contentType: f.type || 'application/octet-stream', upsert: true });
+            if (up.error) throw up.error;
+            await sb.from('change_request_files').insert(
+              { request_id: data.request_id, doc_type: k, path, uploaded_by: S.profile.id });
+          } catch (err) {
+            console.warn('doc upload', k, err?.message || err);
+            toast('อัปโหลดเอกสารบางไฟล์ไม่สำเร็จ — แจ้งหัวหน้า/บัญชีให้ขอใหม่ได้', 1);
+          }
+        }
+      }
       toast(data.has_supervisor ? 'ส่งคำขอให้หัวหน้าเรียบร้อย' : 'บันทึกคำขอแล้ว แต่ยังไม่พบหัวหน้าในระบบ');
       go('requests');
     };
@@ -3667,11 +3831,15 @@ async function viewApprovals() {
       ${r.reason_code ? `<div class="lb" style="margin-top:5px">สาเหตุ</div><div>${{ damaged: 'บัตรชำรุด', lost: 'บัตรหาย', other: 'อื่นๆ' }[r.reason_code]}</div>` : ''}
       ${(r.effective_from || r.effective_to) ? `<div class="lb" style="margin-top:5px">ช่วงวันที่</div><div class="mono">${esc(r.effective_from || '')} – ${esc(r.effective_to || '')}</div>` : ''}
       <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(r.reason)}</div>
+      ${r.req_type === 'fleet_card' ? `<div class="lb" style="margin-top:7px">เอกสารแนบ</div>
+        <div id="apdocs_${r.id}"><div class="lb">กำลังโหลด…</div></div>` : ''}
       <div class="row" style="margin-top:12px">
         <button class="btn gh" data-no="${r.id}" style="color:var(--stop)">ไม่อนุมัติ</button>
         <button class="btn" data-yes="${r.id}">อนุมัติ</button></div></div>`))
     : [el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอที่รออนุมัติ</span></div>`)];
   shell('รออนุมัติ', nodes, { tabs: true });
+  rows.filter(r => r.req_type === 'fleet_card')
+    .forEach(r => renderFleetDocs($('#apdocs_' + r.id), r.id));
   const decide = async (id, ok, note) => {
     const { data } = await sb.rpc('decide_change_request', { p_request: id, p_approve: ok, p_note: note || null });
     if (data?.ok !== true) return toast('ทำรายการไม่สำเร็จ (' + (data?.code || '') + ')', 1);
@@ -3687,6 +3855,115 @@ async function viewApprovals() {
     const n = await askText('ไม่อนุมัติคำขอนี้', 'เหตุผลที่ไม่อนุมัติ',
       'อธิบายให้พนักงานทราบว่าต้องแก้อะไร', true);
     if (n !== null) decide(b.dataset.no, false, n); });
+}
+
+/* ==================================================================== */
+/*  บัญชี/Admin — ออกบัตร Fleet card แล้วแจ้งพนักงานมารับ                */
+/* ==================================================================== */
+/* ขั้นที่ 4 ของ flow: หัวหน้าอนุมัติแล้ว (fulfillment_status='pending_issue')
+   บัญชีติดต่อธนาคารได้บัตรมา -> กรอกเลขบัตรใบใหม่ -> กด "ได้บัตรแล้ว"
+   ระบบเรียก record_fleet_card_issued -> แจ้งเตือนพนักงานในแท็บ 🔔 ให้มารับ */
+async function viewFleetIssue() {
+  S.tab = 'admin';
+  if (!['admin', 'superadmin'].includes(S.profile.role)) {
+    return shell('ออกบัตร Fleet card',
+      [el('<div class="note w"><span>🔒</span><span>เฉพาะฝ่ายบัญชี/Admin เท่านั้น</span></div>')],
+      { back: () => go('admin'), tabs: true, actions: false });
+  }
+  loading('กำลังโหลดคำขอ Fleet card…');
+
+  const { data } = await sb.from('change_requests').select('*')
+    .eq('req_type', 'fleet_card')
+    .in('fulfillment_status', ['pending_issue', 'issued'])
+    .order('decided_at', { ascending: true });
+  const rows = data || [];
+
+  // ชื่อพนักงาน + ทะเบียนรถ
+  const names = {}, plates = {};
+  if (rows.length) {
+    const uids = [...new Set(rows.map(r => r.user_id))];
+    const vids = [...new Set(rows.map(r => r.vehicle_id).filter(Boolean))];
+    const [{ data: ps }, { data: vs }] = await Promise.all([
+      sb.from('profiles').select('id,full_name,employee_code,cost_center_code').in('id', uids),
+      vids.length ? sb.from('vehicles').select('id,plate').in('id', vids) : Promise.resolve({ data: [] }),
+    ]);
+    (ps || []).forEach(p => names[p.id] = p);
+    (vs || []).forEach(v => plates[v.id] = v.plate);
+  }
+
+  const waiting = rows.filter(r => r.fulfillment_status === 'pending_issue');
+  const issued  = rows.filter(r => r.fulfillment_status === 'issued');
+
+  const card = (r) => {
+    const p = names[r.user_id] || {};
+    const reasonTh = { damaged: 'บัตรชำรุด', lost: 'บัตรหาย', other: 'อื่นๆ' }[r.reason_code] || '-';
+    const isWait = r.fulfillment_status === 'pending_issue';
+    return el(`<div class="card">
+      <div style="display:flex;align-items:center">
+        <span class="pill ${isWait ? 'w' : 'b'}">${isWait ? '⏳ รอออกบัตร' : '🎁 แจ้งให้รับแล้ว'}</span>
+        <span class="sp"></span><span class="lb">${r.decided_at ? thDT(new Date(r.decided_at)) : ''}</span></div>
+      <h3 style="margin-top:8px">${esc(p.full_name || 'ไม่ทราบชื่อ')}</h3>
+      <div class="lb mono">${esc(p.employee_code || '')}${p.cost_center_code ? ' · ' + esc(p.cost_center_code) : ''}</div>
+      <div class="hr"></div>
+      <div class="lb">เรื่อง</div><div>${esc(r.field_label)}</div>
+      <div class="lb" style="margin-top:5px">รถ</div><div class="mono">${esc(plates[r.vehicle_id] || '-')}</div>
+      <div class="lb" style="margin-top:5px">บัตรเดิม / สาเหตุ</div>
+      <div class="mono">${esc(r.old_value || '(ไม่มี)')} · ${reasonTh}</div>
+      ${r.new_value ? `<div class="lb" style="margin-top:5px">สเปครถ (คำขอบัตรใหม่)</div><div class="mono">${esc(r.new_value)}</div>` : ''}
+      <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(r.reason || '-')}</div>
+      <div class="lb" style="margin-top:7px">เอกสารแนบ</div>
+      <div id="docs_${r.id}"><div class="lb">กำลังโหลด…</div></div>
+      ${isWait ? `<div class="hr"></div>
+        <label class="f"><span>หมายเลข Fleet card ใบใหม่ (ที่ได้จากธนาคาร) <b style="color:var(--r)">*</b></span>
+          <input id="fc_${r.id}" inputmode="numeric" placeholder="เลขบัตรใบใหม่"></label>
+        <label class="f" style="margin-top:8px"><span>PIN ของ Fleet card</span>
+          <input id="pin_${r.id}" inputmode="numeric" placeholder="PIN บัตร (ถ้ามี)"></label>
+        <button class="btn" data-issue="${r.id}" style="margin-top:10px">✓ อัพเดทเลขบัตร — แจ้งพนักงาน</button>`
+      : `<div class="note g" style="margin-top:10px"><span>🔔</span><span>
+          แจ้งพนักงานแล้ว — เลข Fleet card <b class="mono">${esc(r.issued_value || '(ยังไม่ระบุ)')}</b>${r.fleet_card_pin ? ' · PIN <b class="mono">' + esc(r.fleet_card_pin) + '</b>' : ''}<br>
+          รอพนักงานกด "ยืนยันรับบัตรแล้ว" (Received) จึงจะปิดคำขอและบันทึกเลขบัตรเข้าโรงรถ</span></div>`}
+    </div>`);
+  };
+
+  const nodes = [
+    el(`<div class="note i"><span>🏦</span><span>รายการที่หัวหน้างานอนุมัติแล้ว
+      รอฝ่ายบัญชีออกบัตร เมื่อได้บัตรจากธนาคาร ให้กรอก<b>เลข Fleet card + PIN</b> แล้วกด
+      <b>"อัพเดท & แจ้ง"</b> — พนักงานจะเห็นเลขบัตรทันทีในแท็บ 🔔 แจ้งเตือน
+      และต้องกด "ยืนยันรับบัตร" (Received) ก่อนคำขอจึงปิด</span></div>`),
+  ];
+  if (waiting.length) {
+    nodes.push(el(`<div class="lb" style="margin-top:4px">⏳ รอออกบัตร (${waiting.length})</div>`));
+    waiting.forEach(r => nodes.push(card(r)));
+  }
+  if (issued.length) {
+    nodes.push(el(`<div class="lb" style="margin-top:8px">🎁 แจ้งให้รับแล้ว รอพนักงานมารับ (${issued.length})</div>`));
+    issued.forEach(r => nodes.push(card(r)));
+  }
+  if (!rows.length) nodes.push(el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอ Fleet card ที่ต้องดำเนินการ</span></div>`));
+
+  shell('ออกบัตร Fleet card', nodes, { back: () => go('admin'), tabs: true, actions: false });
+
+  rows.forEach(r => renderFleetDocs($('#docs_' + r.id), r.id));
+
+  document.querySelectorAll('[data-issue]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.issue;
+    const card = $('#fc_' + id).value.trim();
+    const pin = $('#pin_' + id).value.trim();
+    if (!card) return toast('กรอกหมายเลข Fleet card ใบใหม่ก่อน', 1);
+    if (!await askConfirm('อัพเดทเลข Fleet card?',
+        'พนักงานจะเห็นเลขบัตร' + (pin ? '/PIN' : '') + 'ทันที และได้รับแจ้งเตือนให้มารับบัตร', 'อัพเดท & แจ้ง')) return;
+    b.disabled = true; b.textContent = 'กำลังบันทึก…';
+    const { data, error } = await sb.rpc('record_fleet_card_issued',
+      { p_request: id, p_new_card: card, p_pin: pin || null });
+    if (error || data?.ok !== true) {
+      b.disabled = false; b.textContent = '✓ อัพเดทเลขบัตร — แจ้งพนักงาน';
+      return toast(({ NOT_ADMIN: 'เฉพาะบัญชี/Admin เท่านั้น', NOT_FOUND: 'ไม่พบคำขอนี้',
+        CARD_REQUIRED: 'ต้องกรอกเลขบัตร' })[data?.code]
+        || (error ? friendly(error) : 'ทำรายการไม่สำเร็จ'), 1);
+    }
+    toast('อัพเดทเลขบัตรและแจ้งพนักงานแล้ว');
+    go('fleetissue');
+  });
 }
 
 /* คิวคำขอ PIN ใบใหม่ — พนักงานที่กด "ลืม PIN" บนหน้าเข้าระบบ
@@ -4203,6 +4480,9 @@ async function viewAdmin() {
     el(`<div class="card"><h3>บัญชีผู้ใช้</h3>
       <div class="sub">สร้างบัญชีให้พนักงาน · ตั้งสิทธิ์ Admin · ปิด-เปิดการใช้งาน</div>
       <button class="btn gh" id="gousers" style="margin-top:10px">👥 จัดการบัญชีผู้ใช้</button></div>`),
+    el(`<div class="card"><h3>ออกบัตร Fleet card <span id="fcnt" class="pill w" style="display:none"></span></h3>
+      <div class="sub">คำขอที่หัวหน้าอนุมัติแล้ว รอบัญชีออกบัตร — ได้บัตรแล้วกดแจ้งพนักงานมารับ</div>
+      <button class="btn gh" id="gofleet" style="margin-top:10px">💳 จัดการออกบัตร Fleet card</button></div>`),
     ...(S.profile.role === 'superadmin' ? [el(`<div class="card"><h3>รายงานการออก PIN</h3>
       <div class="sub">ดูว่าออก user+PIN ให้ใครแล้ว · ใครมีอีเมล/ไม่มี · เข้าใช้ครั้งแรกแล้วยัง — ใช้ตามรายการนี้แจ้ง PIN ให้พนักงาน</div>
       <button class="btn gh" id="gopinrep" style="margin-top:10px">🔑 เปิดรายงานการออก PIN</button></div>`)] : []),
@@ -4234,6 +4514,17 @@ async function viewAdmin() {
 
   $('#gousers').onclick = () => go('users');
   if ($('#gopinrep')) $('#gopinrep').onclick = () => go('pinreport');
+  $('#gofleet').onclick = () => go('fleetissue');
+
+  // ตัวเลขคำขอ Fleet card ที่รอบัญชีออกบัตร
+  (async () => {
+    try {
+      const { count } = await sb.from('change_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('req_type', 'fleet_card').eq('fulfillment_status', 'pending_issue');
+      if (count > 0 && $('#fcnt')) { $('#fcnt').textContent = 'รอออกบัตร ' + count; $('#fcnt').style.display = ''; }
+    } catch {}
+  })();
 
   $('#chk').onclick = async () => {
     const code = $('#ac').value.trim().toUpperCase();
@@ -5150,6 +5441,19 @@ async function refreshCounts() {
     const { data } = await sb.rpc('my_bootstrap');
     if (data?.ok) { S.alerts = data.unread_alerts || 0; S.approvals = data.pending_approvals || 0; }
   } catch {}
+  await refreshFleetPending();
+}
+
+// บัญชี/Admin: จำนวนคำขอ Fleet card ที่รอออกบัตร -> โชว์เป็น badge บนกระดิ่ง
+async function refreshFleetPending() {
+  S.fleetPending = 0;
+  if (!['admin', 'superadmin'].includes(S.profile?.role)) return;
+  try {
+    const { count } = await sb.from('change_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('req_type', 'fleet_card').eq('fulfillment_status', 'pending_issue');
+    S.fleetPending = count || 0;
+  } catch {}
 }
 
 /* ==================================================================== */
@@ -5164,6 +5468,7 @@ function go(v, opts) {
     alerts: viewAlerts, requests: () => viewRequests(opts || {}), approvals: viewApprovals,
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
     syncstatus: viewSyncStatus, pinreport: viewPinReport, addpast: viewAddPastStop,
+    fleetissue: viewFleetIssue,
   };
   (map[v] || viewHome)();
 }
@@ -5255,6 +5560,7 @@ async function boot() {
   S.quota = bs.quota?.ok ? bs.quota : null;
   S.alerts = bs.unread_alerts || 0; S.approvals = bs.pending_approvals || 0;
   S.supervisorName = bs.supervisor_name || '';
+  refreshFleetPending();   // badge Fleet card รอออกบัตร (บัญชี/Admin) — ไม่ต้องรอ
 
   try { S.master = await loadMaster(); }
   catch { S.master = LS.get('master'); if (!S.master) { toast('โหลดข้อมูลตั้งต้นไม่ได้', 1); } }
