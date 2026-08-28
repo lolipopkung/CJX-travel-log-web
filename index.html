@@ -1073,7 +1073,7 @@ async function viewPlateChange(mode) {
         ['plate_photo', 'รูปถ่ายรถที่เห็นป้ายทะเบียนชัดเจน (ป้ายขาว)', true],
       ].map(([k, label, req]) => `<label class="f" style="margin-top:10px">
         <span>${label} ${req ? '<b style="color:var(--r)">*</b>' : '<span class="lb">(ถ้ามี)</span>'}</span>
-        <input type="file" id="doc_${k}" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+        <input type="file" id="doc_${k}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:12px;padding:6px 0">
         <span class="lb" id="docn_${k}"></span></label>`).join('')}
       <div class="hint" style="padding-top:6px">* จำเป็นต้องแนบ — ยกเว้นหนังสือยินยอมที่แนบเฉพาะกรณีผู้ถือบัตรไม่ใช่เจ้าของรถ</div>
     </div>` : ''}
@@ -3583,7 +3583,7 @@ async function viewAlerts() {
 const REQ_TYPES = [
   // ขอบัตรใหม่ (ไม่เคยมีบัตร) = กรอกสเปครถเต็มเหมือนเปลี่ยนรถประจำ แล้วบัญชีออกบัตรให้
   ['fleet_new', 'ขอ Fleet card ใหม่', 'กรณีเป็นพนักงานที่ไม่เคยได้รับ Fleet Card มาก่อน'],
-  ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย / ออกบัตรใหม่'],
+  ['fleet_card', 'เปลี่ยนเลข Fleet card', 'บัตรชำรุด / บัตรหาย'],
   // เปลี่ยนทะเบียน = เปลี่ยนรถทั้งคัน จึงพาไปกรอกสเปคเต็มเหมือนตอนเพิ่มรถใหม่
   ['plate', 'เปลี่ยนรถประจำ (ถาวร)', 'ซื้อรถใหม่ / เปลี่ยนรถที่ใช้ประจำ'],
   // ใช้ชั่วคราว = ไปหน้าเดียวกับขอใช้รถสำรอง
@@ -3654,17 +3654,16 @@ async function viewRequests(opts = {}) {
       ${isFleet ? `<div class="lb" style="margin-top:11px">สาเหตุที่ต้องออกบัตรใบใหม่</div>
         <div class="seg" id="rc" style="margin-top:5px">
           <button data-r="damaged" class="on">บัตรชำรุด</button>
-          <button data-r="lost">บัตรหาย</button>
-          <button data-r="other">อื่นๆ</button></div>
+          <button data-r="lost">บัตรหาย</button></div>
         <div id="feebox" style="margin-top:10px">${fleetFeeBox(reasonCode)}</div>
         <div class="lb" style="margin-top:11px">เลข Fleet card ใบเดิม</div>
         <div class="vl mono">${esc(vehicle?.fleet_card_no || '(ไม่มีในระบบ)')}</div>
         <div class="lb" style="margin-top:11px">แนบหลักฐานประกอบการพิจารณา</div>
         <label class="f" style="margin-top:6px"><span>หลักฐานการโอนค่าธรรมเนียม <b id="slipreq" style="color:var(--r)">*</b></span>
-          <input type="file" id="doc_slip" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+          <input type="file" id="doc_slip" accept=".pdf,.jpg,.jpeg,.png" style="font-size:12px;padding:6px 0">
           <span class="lb" id="docn_slip"></span></label>
         <label class="f" style="margin-top:8px"><span>รูปถ่ายหน้าบัตร Fleet card ใบเดิม <b id="cardreq" style="color:var(--r)">*</b></span>
-          <input type="file" id="doc_oldcard" accept="image/*,application/pdf" style="font-size:12px;padding:6px 0">
+          <input type="file" id="doc_oldcard" accept=".pdf,.jpg,.jpeg,.png" style="font-size:12px;padding:6px 0">
           <span class="lb" id="docn_oldcard"></span></label>
         <div class="hint" id="cardhint" style="padding-top:4px"></div>
         <div class="note i" style="margin-top:10px"><span>🏦</span><span>
