@@ -1860,17 +1860,17 @@ function onPos(p) {
   const movedFromAnchor = anchor
     ? haversineM(anchor.lat, anchor.lng, c.latitude, c.longitude) : Infinity;
 
+  // ความเร็วโดยนัยจากจุดก่อนหน้า — เร็วเกินจริง = พิกัดเด้ง (multipath ในเมือง/ตึกสูง)
+  const secs = anchor ? Math.max((now - anchor.at) / 1000, .001) : 0;
+  const spike = anchor && (movedFromAnchor / secs) > CFG.gpsMaxSpeedMps;
+
   // จุดแรกของทริป (ยังไม่มี anchor) บันทึกเสมอ เพื่อปักหมุดจุดเริ่ม
-  // จุดถัดไปบันทึกลงเส้นทางเฉพาะเมื่อสัญญาณแม่น + ขยับเกินระยะสั่น
-  if (!anchor || (accOk && movedFromAnchor >= jitter)) {
+  // จุดถัดไปบันทึกลงเส้นทางเฉพาะเมื่อสัญญาณแม่น + ขยับเกินระยะสั่น + ไม่ใช่จุดเด้ง
+  // (เดิมกันจุดเด้งแค่ตอน "นับระยะ" แต่ยังเก็บ+วาดเส้นอยู่ -> เกิดเส้นหลอน)
+  if (!anchor || (accOk && movedFromAnchor >= jitter && !spike)) {
     t.points.push({ at: new Date(now).toISOString(), lat: c.latitude, lng: c.longitude,
       acc: c.accuracy, spd: c.speed, hdg: c.heading, alt: c.altitude });
-
-    if (anchor && accOk) {
-      const secs = Math.max((now - anchor.at) / 1000, .001);
-      // กันจุดกระโดดเพราะสัญญาณเพี้ยน (เร็วเกินจริง) ไม่นับเข้าระยะ
-      if (movedFromAnchor / secs <= CFG.gpsMaxSpeedMps) t.distM += movedFromAnchor;
-    }
+    if (anchor && accOk) t.distM += movedFromAnchor;
     t._counted = { lat: c.latitude, lng: c.longitude, at: now };
   }
   checkDwell(c, now);
@@ -2689,7 +2689,8 @@ function viewAddPastStop() {
   if (!t) return go('home');
   // จับจุดจอดนาน (>20 นาที) จากทั้งเส้นทางก่อน (รวมช่วงที่อยู่เบื้องหลัง) แล้ว mark ให้เห็นบนแผนที่
   detectDwellStops(t);
-  const pts = (t.points || []).filter(p => p.lat != null && p.lng != null);
+  // กรองจุดพิกัดเด้งออกก่อนวาด/สแนป — กันเส้นหลอนในเมือง (ไม่แตะข้อมูลดิบ)
+  const pts = dropGpsSpikes((t.points || []).filter(p => p.lat != null && p.lng != null));
   if (pts.length < 2) { toast('ยังไม่มีเส้นทางให้เลือกจุด', 1); return go('active'); }
 
   const nodes = [
@@ -3258,8 +3259,28 @@ function viewSummary(t, justDone) {
 /* แยกเส้นทางเป็นช่วง ๆ ตามเวลาที่ขาดหาย
    รับได้ทั้ง [lat,lng] (ไม่มีเวลา) และ {lat,lng,at} / [lat,lng,epoch]
    คืน { segs: [[[la,ln],...], ...], blindSec, gaps: [{from,to,sec}] } */
+/* ลบจุดพิกัดเด้ง (multipath ในเมือง/ตึกสูง): จุด b ที่เด้งออกไปไกลจากทั้งจุดก่อน (a)
+   และจุดหลัง (c) แต่ a กับ c อยู่ใกล้กัน = เป็นจุดหลอน ข้ามทิ้งตอนวาดเส้น
+   ไม่แตะข้อมูลดิบที่บันทึกไว้ — แค่ทำความสะอาดตอนแสดงผล (แก้เส้นหลอนย้อนหลังได้ด้วย) */
+function dropGpsSpikes(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return pts || [];
+  const LL = p => Array.isArray(p) ? [p[0], p[1]] : [p.lat, p.lng];
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = LL(out[out.length - 1]), b = LL(pts[i]), c = LL(pts[i + 1]);
+    const ab = haversineM(a[0], a[1], b[0], b[1]);
+    const bc = haversineM(b[0], b[1], c[0], c[1]);
+    const ac = haversineM(a[0], a[1], c[0], c[1]);
+    // เด้งออก >250 ม. แล้วเด้งกลับ >250 ม. แต่จุดก่อน-หลังใกล้กัน = spike ข้ามทิ้ง
+    if (ab > 250 && bc > 250 && ac < Math.min(ab, bc) * 0.5) continue;
+    out.push(pts[i]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
 function splitByGaps(raw) {
-  const pts = (raw || []).map(p => Array.isArray(p)
+  const pts = dropGpsSpikes(raw || []).map(p => Array.isArray(p)
     ? { ll: [p[0], p[1]], t: p[2] != null ? Number(p[2]) : null }
     : { ll: [p.lat, p.lng], t: p.at ? new Date(p.at).getTime() : null })
     .filter(p => p.ll[0] != null && p.ll[1] != null);
