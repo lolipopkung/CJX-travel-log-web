@@ -2070,17 +2070,22 @@ function viewActive() {
 
   const stopList = (t.stops || []).map(s => {
     const open = !s.job_type_code;
+    const home = s.source === 'home_start' || s.source === 'home_end';
+    const openLabel = s.source === 'manual_past' ? 'เพิ่มย้อนหลัง — รอระบุ'
+      : `แวะ ${s.dwell_minutes || 0} นาที — รอระบุ`;
     return `<div class="item">
       <div class="n ${open ? 'q' : ''}">${open ? '?' : s.seq}</div>
       <div class="tx">
-        <div class="h" style="${open ? 'color:var(--warn)' : ''}">${open
-          ? `แวะ ${s.dwell_minutes || 0} นาที — รอระบุ` : esc(jt(s.job_type_code))}</div>
+        <div class="h" style="${open ? 'color:var(--warn)' : ''}">${open ? openLabel : esc(jt(s.job_type_code))}</div>
         <div class="s">${s.store_code ? esc(s.store_code) + ' : ' + esc(s.store_name || '') + ' · ' : ''}
           เข้า ${thTime(new Date(s.arrive_at))}${s.depart_at ? ' → ออก ' + thTime(new Date(s.depart_at)) : ' (ยังอยู่ที่นี่)'}
           ${s.source === 'auto_dwell' ? ' · ระบบบันทึกพิกัดให้อัตโนมัติ' : ''}
           ${s.job_note ? '<br>' + esc(s.job_note) : ''}</div></div>
-      ${open ? `<button class="link" data-cls="${s.id}" style="padding:0 4px">เลือกเลย</button>`
-             : (!s.depart_at ? `<button class="link" data-out="${s.id}" style="padding:0 4px">ออกจากจุดนี้</button>` : '')}
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        ${open ? `<button class="link" data-cls="${s.id}" style="padding:0 4px">เลือกเลย</button>`
+               : (!s.depart_at ? `<button class="link" data-out="${s.id}" style="padding:0 4px">ออกจากจุดนี้</button>` : '')}
+        ${home ? '' : `<button class="link" data-del="${s.id}" style="padding:0 4px;color:var(--r)">ลบ</button>`}
+      </div>
     </div>`;
   }).join('') || '<div class="lb">ยังไม่มีจุดปฏิบัติงาน — ถึงที่หมายแล้วกด "เพิ่มจุด"</div>';
 
@@ -2126,6 +2131,20 @@ function viewActive() {
       s.depart_at = new Date().toISOString(); s.depart_lat = p.coords.latitude; s.depart_lng = p.coords.longitude;
     } catch { s.depart_at = new Date().toISOString(); }
     s._dirty = 1; saveTrip(); sync(); go('active');
+  });
+  // ลบจุดที่ไม่ต้องการ (เช่น เพิ่มย้อนหลังผิด/แวะสั้นที่ไม่ใช่งาน) — ลบทั้งในเครื่องและบนเซิร์ฟเวอร์
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const s = t.stops.find(x => x.id === b.dataset.del); if (!s) return;
+    if (!await askConfirm('ลบจุดนี้',
+        'ลบจุดนี้ออกจากทริป?' + (s.job_type_code ? '\n' + jt(s.job_type_code) : '')
+        + '\nเข้า ' + thTime(new Date(s.arrive_at)), 'ลบ', true)) return;
+    try { await sb.from('stops').delete().eq('id', s.id); } catch {}   // ลบจาก server ถ้าเคยขึ้นแล้ว
+    t.stops = t.stops.filter(x => x.id !== s.id);
+    t.stops.sort((x, y) => new Date(x.arrive_at) - new Date(y.arrive_at));
+    t.stops.forEach((x, i) => { x.seq = i + 1; x._dirty = 1; });   // เรียงลำดับใหม่ให้ต่อเนื่อง
+    saveTrip(); sync();
+    toast('ลบจุดแล้ว');
+    go('active');
   });
   if (S.pendingDwell) { const d = S.pendingDwell; S.pendingDwell = null; askDwell(d.id, d.mins); }
 }
