@@ -3,7 +3,7 @@
    ข้อมูลจริงไม่ cache ที่นี่ (แอปมีคิวออฟไลน์ของตัวเองใน localStorage + IndexedDB)
 
    ขึ้นเวอร์ชันใหม่ทุกครั้งที่แก้ index.html ไม่งั้นเครื่องที่ติดตั้งไว้จะได้ของเก่า */
-const V = 'cjx-travel-log-c30cbd9499';
+const V = 'cjx-travel-log-c64b4f23b8';
 const SHELL = ['./', './index.html', './manifest.webmanifest',
                './icon-192.png', './icon-512.png'];
 

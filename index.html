@@ -2783,9 +2783,26 @@ function askDwell(stopId, mins) {
       ? '🏪 เลือกสาขา (งานประเภทนี้ต้องระบุ)'
       : '🏪 เลือก / ค้นหาสาขา (ถ้าไปที่สาขา)';
   };
-  $('#dst').onclick = () => pickStore(x => { store = x;
+  // ระยะสูงสุดจากจุดที่บันทึกไว้ — กันเลือกสาขาที่ไกลกว่าพิกัดที่แวะจริง
+  // (ใช้พิกัดจุดที่หยุด s.arrive_lat/lng ไม่ใช่ตำแหน่งปัจจุบัน เพราะเป็นการเพิ่มย้อนหลัง)
+  const MAX_AWAY_KM = 1;
+  const pickLL = (x) => {
+    if (x.lat != null && x.lng != null) return { lat: +x.lat, lng: +x.lng };
+    if (x.code) { const m = (S.master.stores || []).find(v => v.code === x.code);
+      if (m && m.lat != null) return { lat: +m.lat, lng: +m.lng }; }
+    return null;
+  };
+  $('#dst').onclick = () => pickStore(x => {
+    const ll = pickLL(x);
+    if (s.arrive_lat != null && ll) {
+      const km = haversineM(+s.arrive_lat, +s.arrive_lng, ll.lat, ll.lng) / 1000;
+      if (km > MAX_AWAY_KM) return toast('สถานที่นี้อยู่ห่างจากจุดที่แวะ ' + nf(km, 1)
+        + ' กม. (เกิน ' + MAX_AWAY_KM + ' กม.) — เลือกสาขา/สถานที่ที่ตรงกับพิกัดที่บันทึกไว้', 1, 9000);
+    }
+    store = x;
     $('#dst').textContent = (x.code ? '🏪 ' + x.code + ' : ' : '📍 ') + x.name;
-    if ($('#dpl')) $('#dpl').value = x.name; });   // เลือกสาขาแล้วเติมชื่อสถานที่ให้ด้วย
+    if ($('#dpl')) $('#dpl').value = x.name;   // เลือกสาขาแล้วเติมชื่อสถานที่ให้ด้วย
+  });
   const finish = (patch) => { Object.assign(s, patch, { needs_reason: !patch.job_type_code, _dirty: 1 });
     saveTrip(); sync(); closeOverlay(); go('active'); };
   const placeName = () => ($('#dpl')?.value || '').trim() || store?.name || null;
