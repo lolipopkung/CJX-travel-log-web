@@ -1977,12 +1977,20 @@ function mergeDwellStops(t) {
   const auto = s => s.source === 'auto_dwell' || s.source === 'manual_past';
   const endMs = s => s.depart_at ? new Date(s.depart_at).getTime()
     : new Date(s.arrive_at).getTime() + (s.dwell_minutes || 0) * 60000;
+  // "ที่เดิม" = จุดเข้าห่างกันไม่เกิน 120 ม. (เดินไปมาในตึก/ลานจอด GPS เด้งได้บ้าง)
+  const sameSpot = (p, q) => p.arrive_lat != null && q.arrive_lat != null
+    && haversineM(p.arrive_lat, p.arrive_lng, q.arrive_lat, q.arrive_lng) <= 120;
+  // งานเข้ากันได้ = ฝั่งใดยังไม่ระบุ หรือระบุประเภทเดียวกัน (คนละงานที่ระบุแล้ว = ไม่รวม)
+  const jobOk = (p, q) => !p.job_type_code || !q.job_type_code || p.job_type_code === q.job_type_code;
+  const GAP = 30 * 60000;   // ช่องว่างเวลา <= 30 นาที + อยู่ที่เดิม = ยังไม่ได้ไปไหน
   const sorted = t.stops.slice().sort((a, b) => new Date(a.arrive_at) - new Date(b.arrive_at));
   const kept = [], removed = [];
   for (const s of sorted) {
     const prev = kept[kept.length - 1];
-    const overlap = prev && auto(prev) && auto(s) && !isHome(prev) && !isHome(s)
-      && new Date(s.arrive_at).getTime() <= endMs(prev) + 60000;   // ทับกันหรือชนกัน
+    // รวมเมื่อ: (เวลาทับกัน) หรือ (อยู่ที่เดิม + ช่องว่างเวลาสั้น) และงานเข้ากันได้
+    const near = prev && auto(prev) && auto(s) && !isHome(prev) && !isHome(s) && jobOk(prev, s);
+    const gapMs = prev ? new Date(s.arrive_at).getTime() - endMs(prev) : Infinity;
+    const overlap = near && (gapMs <= 60000 || (sameSpot(prev, s) && gapMs <= GAP));
     if (!overlap) { kept.push(s); continue; }
     // ขยายจุดเดิมให้ครอบช่วงของทั้งคู่
     if (endMs(s) > endMs(prev)) {
