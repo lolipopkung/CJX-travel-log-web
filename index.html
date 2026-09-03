@@ -5845,13 +5845,15 @@ async function viewTravelClaim() {
     </div>
 
     <div class="card"><h3>ข้อมูลการเดินทาง</h3>
-      <label style="display:flex;gap:9px;align-items:center;margin-top:6px">
-        <input type="checkbox" id="tcOtherCc" style="width:18px;height:18px"><span>เดินทางเพื่อทีม/Cost center อื่น</span></label>
-      <label class="f hide" id="tcCcWrap" style="margin-top:8px"><span>เลือก Cost center <b style="color:var(--r)">*</b></span>
+      <div class="lb" style="margin-top:8px">เดินทางเพื่อทีม/Cost center อื่น?</div>
+      <div class="seg" id="tcCcSeg" style="margin-top:5px">
+        <button data-v="no" class="on">ไม่ใช่</button><button data-v="yes">ใช่</button></div>
+      <label class="f hide" id="tcCcWrap"><span>เลือก Cost center <b style="color:var(--r)">*</b></span>
         <select id="tcCc"><option value="">— เลือก —</option>${ccOpts}</select></label>
 
-      <label style="display:flex;gap:9px;align-items:center;margin-top:10px">
-        <input type="checkbox" id="tcAbroad" style="width:18px;height:18px"><span>เดินทางไปต่างประเทศ</span></label>
+      <div class="lb" style="margin-top:12px">ลักษณะการเดินทาง</div>
+      <div class="seg" id="tcTypeSeg" style="margin-top:5px">
+        <button data-v="dom" class="on">ในประเทศ</button><button data-v="abroad">ต่างประเทศ</button></div>
       <div id="tcAbroadWrap" class="hide">
         <label class="f" style="margin-top:8px"><span>ประเทศปลายทาง <b style="color:var(--r)">*</b></span>
           <select id="tcCountry"><option value="">— เลือก —</option>${ctryOpts}</select></label>
@@ -5860,18 +5862,19 @@ async function viewTravelClaim() {
           <label class="f"><span>วันสิ้นสุด <b style="color:var(--r)">*</b></span><input id="tcD2" type="date"></label></div>
       </div>
 
-      <label class="f" style="margin-top:10px"><span>วัตถุประสงค์การเดินทาง <b style="color:var(--r)">*</b></span>
+      <label class="f" style="margin-top:12px"><span>วัตถุประสงค์การเดินทาง <b style="color:var(--r)">*</b></span>
         <select id="tcObj"><option value="">— เลือก —</option>${jobOpts}</select></label>
 
-      <label style="display:flex;gap:9px;align-items:center;margin-top:10px">
-        <input type="checkbox" id="tcBrm" style="width:18px;height:18px"><span>มีการขอ Budget Request Memo (BRM)</span></label>
+      <div class="lb" style="margin-top:12px">มีการขอ Budget Request Memo (BRM)?</div>
+      <div class="seg" id="tcBrmSeg" style="margin-top:5px">
+        <button data-v="no" class="on">ไม่ใช่</button><button data-v="yes">ใช่</button></div>
       <div id="tcBrmWrap" class="hide">
         <label class="f" style="margin-top:8px"><span>BRM No. <b style="color:var(--r)">*</b></span>
           <input id="tcBrmNo" placeholder="พิมพ์เลข BRM"></label>
         <div id="tcBrmInfo" class="lb" style="padding:2px 2px 0"></div>
       </div>
 
-      <label class="f" style="margin-top:10px"><span>Travel Reason <b style="color:var(--r)">*</b></span>
+      <label class="f" style="margin-top:12px"><span>Travel Reason <b style="color:var(--r)">*</b></span>
         <textarea id="tcReason" placeholder="ระบุเหตุผล/เรื่องที่ไปทำ · จังหวัด · ช่วงเวลา"></textarea></label>
     </div>
 
@@ -5892,8 +5895,19 @@ async function viewTravelClaim() {
 
   shell('เบิกค่าเดินทาง', [...b.childNodes], { back: () => go('home'), tabs: true, actions: false });
 
-  const tog = (cbId, wrapId) => { const cb = $('#' + cbId); cb.onchange = () => $('#' + wrapId).classList.toggle('hide', !cb.checked); };
-  tog('tcOtherCc', 'tcCcWrap'); tog('tcAbroad', 'tcAbroadWrap'); tog('tcBrm', 'tcBrmWrap');
+  // toggle Yes/No + ในประเทศ/ต่างประเทศ (เก็บสถานะไว้ตรวจตอนส่ง)
+  const tc = { ccOther: false, abroad: false, brm: false };
+  const segWire = (id, cb) => { const seg = $('#' + id); if (!seg) return;
+    seg.querySelectorAll('button').forEach(b => b.onclick = () => {
+      seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); }); };
+  segWire('tcCcSeg', v => { tc.ccOther = v === 'yes'; $('#tcCcWrap').classList.toggle('hide', !tc.ccOther); });
+  segWire('tcBrmSeg', v => { tc.brm = v === 'yes'; $('#tcBrmWrap').classList.toggle('hide', !tc.brm); });
+  segWire('tcTypeSeg', v => {
+    tc.abroad = v === 'abroad'; $('#tcAbroadWrap').classList.toggle('hide', !tc.abroad);
+    // Airline claim: ปรับ default ในประเทศ/ต่างประเทศ ตามลักษณะการเดินทาง (ถ้าเปิดฟอร์มไว้)
+    const acb = document.querySelector('.tcType[data-k="airline"]');
+    if (acb && acb.checked) { $('#tcf_airline').innerHTML = claimFieldsHtml('airline', provOpts, ctryOpts, tc.abroad); wireClaimFields('airline'); }
+  });
 
   // BRM lookup
   let brmT;
@@ -5908,18 +5922,18 @@ async function viewTravelClaim() {
     }, 400);
   };
 
-  // claim type fields
+  // claim type fields (airline รับ default ในประเทศ/ต่างประเทศ ตามลักษณะการเดินทาง)
   document.querySelectorAll('.tcType').forEach(cb => cb.onchange = () => {
     const k = cb.dataset.k, box = $('#tcf_' + k);
     box.classList.toggle('hide', !cb.checked);
-    if (cb.checked && !box.innerHTML) { box.innerHTML = claimFieldsHtml(k, provOpts, ctryOpts); wireClaimFields(k); }
+    if (cb.checked && !box.innerHTML) { box.innerHTML = claimFieldsHtml(k, provOpts, ctryOpts, tc.abroad); wireClaimFields(k); }
   });
 
   $('#tcSubmit').onclick = () => submitTravelClaim({ sess, km, rate });
 }
 
 /* HTML ช่องกรอกของแต่ละ claim type */
-function claimFieldsHtml(k, provOpts, ctryOpts) {
+function claimFieldsHtml(k, provOpts, ctryOpts, abroad) {
   const file = (doc, label) => `<label class="f" style="margin-top:7px"><span>${label}</span>
     <input type="file" data-cf="${k}:${doc}" accept="${FILE_ACCEPT}" style="font-size:12px;padding:5px 0"></label>`;
   // ฟอร์มบันทึกเติมน้ำมันแบบย่อ (กรอกในฟอร์มเบิกเลย ไม่ต้องมีทริป active) — คำนวณลิตรให้ + เก็บพิกัดตอนส่ง
@@ -5950,16 +5964,18 @@ function claimFieldsHtml(k, provOpts, ctryOpts) {
   if (k === 'fuel') return `
     <label class="f"><span>ประเภทน้ำมัน</span><select data-d="fuel_of"><option value="rental">น้ำมันรถเช่า</option><option value="personal">น้ำมันรถส่วนตัว</option></select></label>
     ${fuelMini()}`;
-  if (k === 'airline') return `
-    <label class="f"><span>เที่ยวบิน</span><select data-d="scope" id="cf_${k}_scope"><option value="domestic">ในประเทศ</option><option value="intl">ต่างประเทศ</option></select></label>
-    <div class="row" style="margin-top:7px" id="cf_${k}_dom">
+  if (k === 'airline') { const intl = !!abroad; return `
+    <label class="f"><span>เที่ยวบิน</span><select data-d="scope" id="cf_${k}_scope">
+      <option value="domestic"${intl ? '' : ' selected'}>ในประเทศ</option>
+      <option value="intl"${intl ? ' selected' : ''}>ต่างประเทศ</option></select></label>
+    <div class="row ${intl ? 'hide' : ''}" style="margin-top:7px" id="cf_${k}_dom">
       <label class="f"><span>ต้นทาง (จังหวัด)</span><select data-d="from_prov"><option value="">—</option>${provOpts}</select></label>
       <label class="f"><span>ปลายทาง (จังหวัด)</span><select data-d="to_prov"><option value="">—</option>${provOpts}</select></label></div>
-    <div class="row hide" style="margin-top:7px" id="cf_${k}_intl">
+    <div class="row ${intl ? '' : 'hide'}" style="margin-top:7px" id="cf_${k}_intl">
       <label class="f"><span>ต้นทาง (ประเทศ)</span><select data-d="from_ctry"><option value="">—</option>${ctryOpts}</select></label>
       <label class="f"><span>ปลายทาง (ประเทศ)</span><select data-d="to_ctry"><option value="">—</option>${ctryOpts}</select></label></div>
     <label class="f" style="margin-top:7px"><span>จำนวนผู้โดยสาร</span><input data-d="pax" inputmode="numeric"></label>
-    ${file('booking', 'ใบเสร็จตั๋ว / Booking (มีชื่อผู้โดยสาร)')}`;
+    ${file('booking', 'ใบเสร็จตั๋ว / Booking (มีชื่อผู้โดยสาร)')}`; }
   if (k === 'public_transport') return `
     <label class="f"><span>ประเภทการเดินทาง</span><select data-d="mode" id="cf_${k}_mode">
       ${TRANSPORT_MODES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label>
@@ -6007,11 +6023,13 @@ async function submitTravelClaim(ctx) {
   const obj = $('#tcObj').value;
   if (!obj) return toast('เลือกวัตถุประสงค์การเดินทาง', 1);
   if (reason.length < 5) return toast('ระบุ Travel Reason ให้ชัดเจน', 1);
-  const otherCc = $('#tcOtherCc').checked, cc = otherCc ? $('#tcCc').value : (S.profile.cost_center_code || null);
+  // อ่านสถานะ toggle จากปุ่มที่ .on อยู่
+  const otherCc = $('#tcCcSeg button.on')?.dataset.v === 'yes';
+  const cc = otherCc ? $('#tcCc').value : (S.profile.cost_center_code || null);
   if (otherCc && !cc) return toast('เลือก Cost center', 1);
-  const abroad = $('#tcAbroad').checked;
+  const abroad = $('#tcTypeSeg button.on')?.dataset.v === 'abroad';
   if (abroad && (!$('#tcCountry').value || !$('#tcD1').value || !$('#tcD2').value)) return toast('กรอกประเทศ + วันเริ่ม-สิ้นสุด', 1);
-  const brmOn = $('#tcBrm').checked, brmNo = brmOn ? $('#tcBrmNo').value.trim() : null;
+  const brmOn = $('#tcBrmSeg button.on')?.dataset.v === 'yes', brmNo = brmOn ? $('#tcBrmNo').value.trim() : null;
   if (brmOn && !brmNo) return toast('กรอกเลข BRM', 1);
   const picked = [...document.querySelectorAll('.tcType:checked')].map(x => x.dataset.k);
   if (!picked.length) return toast('เลือกประเภทการเบิกอย่างน้อย 1 ข้อ', 1);
