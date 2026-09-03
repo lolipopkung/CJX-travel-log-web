@@ -1495,7 +1495,8 @@ function viewHome() {
   if (!S.online) nodes.push(el(`<div class="note w"><span>📴</span><span>ออฟไลน์ — บันทึกได้ปกติ ข้อมูลจะส่งขึ้นระบบเองเมื่อมีสัญญาณ</span></div>`));
   if (S.pending) nodes.push(el(`<div class="note i"><span>☁</span><span>รอส่งขึ้นระบบ ${S.pending} รายการ</span></div>`));
 
-  nodes.push(quotaCard());
+  // การ์ดโควต้า Fleet card เฉพาะกลุ่มที่มี Fleet card — กลุ่มเบิก กม.ละ 6 บาท ไม่ต้องแสดง
+  if (hasFleetCard()) nodes.push(quotaCard());
 
   const vc = el(`<div class="card"><div style="display:flex;align-items:center">
       <h3 style="flex:1">รถที่ใช้ในรอบการทำงานนี้</h3>
@@ -3016,7 +3017,12 @@ function viewFuelForm() {
 
   const drawQuota = () => {
     const box = $('#qbox'); box.innerHTML = '';
-    if (!q || q.state === 'no_quota') { box.append(quotaCard(true)); return; }
+    // กลุ่มไม่มี Fleet card = เบิก กม.ละ 6 บาท → ไม่มีโควต้าให้เทียบ (เบิกน้ำมันผ่านเมนูเบิกค่าเดินทาง)
+    if (!q || q.state === 'no_quota') {
+      box.innerHTML = `<div class="note i"><span>🧾</span><span>คุณอยู่กลุ่ม<b>เบิกค่าเดินทาง (กม.ละ 6 บาท)</b> —
+        การเบิกค่าน้ำมันทำผ่านเมนู "เบิกค่าเดินทาง" ที่หน้าหลัก</span></div>`;
+      return;
+    }
     const unit = q.unit === 'thb' ? 'บาท' : 'ลิตร', dg = q.unit === 'thb' ? 0 : 1;
     const add = q.unit === 'thb' ? (parseFloat($('#am').value) || 0) : (parseFloat($('#lt').value) || 0);
     const after = (q.used || 0) + add, lim = q.quota || 0;
@@ -5699,8 +5705,9 @@ async function refreshFleetPending() {
 /* ==================================================================== */
 /*  เบิกค่าเดินทาง — พนักงานที่ "ไม่มี Fleet card" (กม.ละ 6 บาท + claim)   */
 /* ==================================================================== */
-// มี Fleet card = มีโควต้าน้ำมัน (S.quota) · ไม่มี = กลุ่มเบิก กม.ละ 6 บาท
-function hasFleetCard() { return !!(S.quota && S.quota.ok); }
+// มี Fleet card = มีโควต้าน้ำมันจริง (state ไม่ใช่ 'no_quota') · ไม่มี = กลุ่มเบิก กม.ละ 6 บาท
+// (my_quota_status คืน ok:true เสมอ จึงต้องดูที่ state — ไม่ใช่ ok)
+function hasFleetCard() { return !!(S.quota && S.quota.state && S.quota.state !== 'no_quota'); }
 
 const CLAIM_TYPES = [
   ['rental_car', 'Rental Car Claim', 'ค่าเช่ารถ'],
