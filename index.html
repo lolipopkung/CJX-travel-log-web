@@ -239,6 +239,7 @@ const CFG = {
   curfewUserHour: 21,
   curfewSupHour: 22,
   syncEverySec: 60,
+  lockAfterMin: 30,         // ล็อก PIN เมื่อพักแอปไว้เกินกี่นาที (เปิดแอปใหม่ล็อกเสมอ)
 };
 
 let sb = null;
@@ -596,6 +597,62 @@ function fatalNotice(title, body) {
 /* ==================================================================== */
 /*  เข้าสู่ระบบ                                                          */
 /* ==================================================================== */
+/* hash PIN สำหรับปลดล็อกออฟไลน์ (เก็บในเครื่องเท่านั้น ไม่ส่งไป server) */
+async function pinHashHex(code, pin) {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cjx:' + code + ':' + pin));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch { return null; }
+}
+
+/* หน้าล็อกแอป — ต้องใส่ PIN ทุกครั้งที่เปิดใช้งาน (security)
+   verify กับ server ถ้าออนไลน์ · ถ้าออฟไลน์เทียบ hash ที่เก็บไว้ในเครื่องตอน login */
+function viewPinLock() {
+  const code = (localStorage.getItem('tl.lastCode') || '').toUpperCase();
+  const name = LS.get('bootstrap')?.profile?.full_name || '';
+  let tries = 0;
+  const b = el(`<main>
+    <div style="text-align:center;padding:22px 0 6px">
+      <div class="logo" style="margin:0 auto">${logoImg(34)}</div>
+      <h2 style="margin-top:12px">ปลดล็อกด้วย PIN</h2>
+      <div class="lb">${name ? esc(name) + ' · ' : ''}${esc(code)}</div></div>
+    <div class="note i"><span>🔒</span><span>เพื่อความปลอดภัย ต้องใส่ PIN ทุกครั้งที่เปิดใช้งานแอป</span></div>
+    <label class="f pin"><span>PIN ${CFG.pinLength} หลัก</span>
+      <input id="ulpin" type="password" inputmode="numeric" maxlength="${CFG.pinLength}" autocomplete="current-password" placeholder="••••••"></label>
+    <button class="btn lg" id="ulok">ปลดล็อก</button>
+    <button class="btn gh" id="ulout" style="margin-top:10px">ออกจากระบบ (เข้าด้วยบัญชีอื่น)</button>
+  </main>`);
+  $('#app').innerHTML = ''; $('#app').append(b);
+  const unlock = async () => {
+    const pin = $('#ulpin').value.trim();
+    if (pin.length !== CFG.pinLength) return toast(`ใส่ PIN ${CFG.pinLength} หลัก`, 1);
+    const btn = $('#ulok'); btn.disabled = true; btn.textContent = 'กำลังตรวจสอบ…';
+    let ok = false, offline = false;
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: code.toLowerCase() + '@' + CFG.pinDomain, password: pin });
+      ok = !error;
+      if (error && /fetch|network|failed to fetch/i.test(String(error.message))) offline = true;
+    } catch { offline = true; }
+    if (!ok && offline) {
+      const h = await pinHashHex(code, pin), saved = localStorage.getItem('tl.pinHash');
+      ok = !!h && !!saved && h === saved;
+    }
+    if (!ok) {
+      tries++; btn.disabled = false; btn.textContent = 'ปลดล็อก'; $('#ulpin').value = '';
+      if (tries >= 5) { await sb.auth.signOut(); location.reload(); return; }
+      return toast(`PIN ไม่ถูกต้อง (เหลืออีก ${5 - tries} ครั้ง)`, 1);
+    }
+    S.unlocked = true; S.lastActive = Date.now(); boot();
+  };
+  $('#ulok').onclick = unlock;
+  $('#ulpin').onkeydown = (e) => { if (e.key === 'Enter') unlock(); };
+  $('#ulout').onclick = async () => {
+    if (!await askConfirm('ออกจากระบบ', 'ออกแล้วต้องเข้าด้วยรหัสพนักงาน + PIN ใหม่', 'ออกจากระบบ', true)) return;
+    localStorage.removeItem('tl.pinHash'); await sb.auth.signOut(); location.reload();
+  };
+  setTimeout(() => $('#ulpin')?.focus(), 150);
+}
+
 function viewLogin() {
   const body = el(`<main>
     <div style="text-align:center;padding:14px 0 4px">
@@ -652,6 +709,8 @@ function viewLogin() {
       return;
     }
     localStorage.setItem('tl.lastCode', code);
+    pinHashHex(code, pin).then(h => h && localStorage.setItem('tl.pinHash', h));  // สำหรับปลดล็อกออฟไลน์
+    S.unlocked = true; S.lastActive = Date.now();   // เพิ่ง login ด้วย PIN แล้ว ไม่ต้องล็อกซ้ำ
     LS.del('consented');   // login ใหม่ -> ให้หน้ายินยอมขึ้น 1 ครั้งหลังเข้าระบบ
     boot();
   };
@@ -747,6 +806,10 @@ function viewSetPin(forced = true) {
       e.target.textContent = forced ? 'บันทึก PIN และเริ่มใช้งาน' : 'บันทึก PIN ใหม่';
       return toast(friendly(error), 1); }
     await sb.rpc('mark_pin_changed');
+    // อัปเดต hash สำหรับปลดล็อกออฟไลน์ให้ตรงกับ PIN ใหม่
+    const codeNow = (localStorage.getItem('tl.lastCode') || S.profile.employee_code || '').toUpperCase();
+    pinHashHex(codeNow, a).then(h => h && localStorage.setItem('tl.pinHash', h));
+    S.unlocked = true; S.lastActive = Date.now();
     toast(forced ? 'ตั้ง PIN เรียบร้อย' : 'เปลี่ยน PIN เรียบร้อยแล้ว');
     if (forced) { boot(); } else { S.profile.must_change_pin = false; go('home'); }
   };
@@ -5758,8 +5821,8 @@ async function viewClaimRecipient(opts) {
       <label class="f" style="margin-top:8px"><span>นามสกุล (ภาษาไทย) <b style="color:var(--r)">*</b></span>
         <input id="rcln" value="${esc((cur?.full_name_th || '').split(' ').slice(1).join(' '))}"></label>
       <label class="f" style="margin-top:8px"><span>ธนาคาร</span>
-        <div style="border:1px solid var(--field);border-radius:9px;padding:8px 11px;background:var(--surface-2);font-weight:600;color:var(--ink)">
-          🏦 ธนาคารกสิกรไทย <span class="lb" style="font-weight:400">(บริษัทกำหนดให้เบิกจ่ายผ่านกสิกรไทยเท่านั้น)</span></div></label>
+        <div style="border:1px solid var(--field);border-radius:9px;padding:8px 11px;background:var(--surface-2);font-weight:600;color:var(--ink)">🏦 ธนาคารกสิกรไทย</div>
+        <span class="lb" style="display:block;margin-top:4px">บริษัทกำหนดให้เบิกจ่ายผ่านกสิกรไทยเท่านั้น</span></label>
       <label class="f" style="margin-top:8px"><span>เลขที่บัญชี (กสิกรไทย) <b style="color:var(--r)">*</b></span>
         <input id="rcacc" inputmode="numeric" value="${esc(cur?.bank_account_no || '')}" placeholder="เลขบัญชีธนาคาร"></label>
       <label class="f" style="margin-top:10px"><span>สำเนาบัตรประชาชน ${cur?.idcard_path ? '<span class="pill g">แนบแล้ว</span>' : '<b style="color:var(--r)">*</b>'}</span>
@@ -5948,8 +6011,8 @@ function claimFieldsHtml(k, provOpts, ctryOpts, abroad) {
     <input type="file" data-cf="${k}:${doc}" accept="${FILE_ACCEPT}" style="font-size:12px;padding:5px 0"></label>`;
   // ฟอร์มบันทึกเติมน้ำมันแบบย่อ (กรอกในฟอร์มเบิกเลย ไม่ต้องมีทริป active) — คำนวณลิตรให้ + เก็บพิกัดตอนส่ง
   const fuelMini = () => `
-    <label class="f" style="margin-top:7px"><span>รูปเลขไมล์ (ถ่ายสด)</span>
-      <input type="file" data-cf="${k}:odo_photo" accept="image/*" capture="environment" style="font-size:12px;padding:5px 0"></label>
+    <label class="f" style="margin-top:7px"><span>รูปเลขไมล์ (แนบรูป/สแกน — เบิกย้อนหลังได้)</span>
+      <input type="file" data-cf="${k}:odo_photo" accept="${FILE_ACCEPT}" style="font-size:12px;padding:5px 0"></label>
     <label class="f" style="margin-top:7px"><span>เลขไมล์ปัจจุบัน</span><input data-d="odometer" inputmode="numeric"></label>
     <div class="row" style="margin-top:7px">
       <label class="f"><span>ยอดเงิน (บาท)</span><input data-d="amount" data-fuelamt inputmode="decimal"></label>
@@ -6231,6 +6294,8 @@ async function boot() {
   loading('กำลังเตรียมระบบ…');
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { S.profile = null; return viewLogin(); }
+  // ล็อกด้วย PIN: เปิดแอปใหม่เสมอ + กลับเข้าแอปหลังพักเกิน 30 นาที (ตั้งใน CFG.lockAfterMin)
+  if (!S.unlocked) return viewPinLock();
 
   // สลับบัญชีบนเครื่องเดียวกัน -> ล้างแคชของคนก่อนหน้า (กันข้อมูลรั่วข้ามคน / PDPA)
   const prevUid = LS.get('uid');
@@ -6357,7 +6422,13 @@ async function boot() {
 window.addEventListener('online', () => { S.online = true; sync(); if (S.view === 'home') go('home'); });
 window.addEventListener('offline', () => { S.online = false; if (S.view === 'home') go('home'); });
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { S.hiddenAt = Date.now(); return; }
   if (document.visibilityState === 'visible') {
+    // ล็อกด้วย PIN อีกครั้งถ้าพักแอปไว้เกิน 30 นาที (ถ่ายรูปเลขไมล์/สลิปแล้วกลับมาไม่โดนล็อก)
+    if (S.unlocked && S.hiddenAt && (Date.now() - S.hiddenAt) > CFG.lockAfterMin * 60000) {
+      S.unlocked = false; S.hiddenAt = null; return boot();
+    }
+    S.hiddenAt = null;
     if (S.trip && !tracking()) startWatch();
     keepAwake(); sync();
     // กลับเข้าแอปแล้วเช็กว่าช่วงที่ไม่ได้ดูอยู่ ระบบตาบอดไปนานแค่ไหน
