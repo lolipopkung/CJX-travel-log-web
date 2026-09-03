@@ -1515,6 +1515,22 @@ function viewHome() {
   </div>`);
   nodes.push(vc);
 
+  if (!t && S.unfinished) {
+    // มีงานที่ระบบปิดให้อัตโนมัติแต่ยังระบุจุดไม่ครบ -> บล็อกเริ่มงานใหม่ ต้องบันทึกงานเดิมก่อน
+    const u = S.unfinished;
+    nodes.push(el(`<div class="card" style="border:2px solid var(--r)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:20px">⚠️</span><h3 style="flex:1;color:var(--r)">มีงานค้างยังบันทึกไม่เสร็จ</h3></div>
+      <div class="lb" style="margin-top:7px">งานวันที่ <b>${thDate(new Date(u.session.start_at))}</b>
+        ระบบปิดให้อัตโนมัติ (ลืมกดสิ้นสุดงาน) แต่ยังมีจุดปฏิบัติงาน <b>${u.open_stops} จุด</b> ที่ยังไม่ได้ระบุ</div>
+      <div class="note w" style="margin-top:9px"><span>🔒</span><span>
+        <b>ต้องบันทึกงานเดิมให้เสร็จก่อน จึงจะเริ่มงานวันใหม่ได้</b></span></div>
+      <button class="btn" id="gofinish" style="margin-top:10px">📝 ไปบันทึกงานเดิมให้เสร็จ</button></div>`));
+    shell(CFG.appName, nodes, { tabs: true });
+    if ($('#chv')) $('#chv').onclick = () => go('garage');
+    $('#gofinish').onclick = () => openUnfinished();
+    return;
+  }
   if (!t) {
     const bk = activeBackup();
     if (bk) {
@@ -2061,6 +2077,7 @@ function outboxAdd(trip) {
 }
 
 async function startFlow() {
+  if (S.unfinished) { toast('มีงานค้างที่ยังบันทึกไม่เสร็จ — บันทึกงานเดิมให้เสร็จก่อน', 1, 7000); return go('home'); }
   const v = pickedVehicle();
   if (!v) return toast('ยังไม่มีรถในระบบ', 1);
   if (!usableToday(v)) return toast(
@@ -2289,6 +2306,7 @@ function paintActive() {
 function viewActive() {
   const t = S.trip;
   if (!t) return go('home');
+  const fin = !!t._finishing;   // โหมด "บันทึกงานย้อนหลัง" (ระบบปิดให้แล้ว รอระบุจุดที่ค้าง)
   const jt = c => (S.master.job_types.find(x => x.code === c)?.name_th) || c || 'ยังไม่ระบุประเภทงาน';
   const liters = (t.fuels || []).reduce((a, f) => a + (+f.liters || 0), 0);
 
@@ -2320,8 +2338,13 @@ function viewActive() {
       <div class="tx"><div class="h">${nf(f.liters, 2)} ลิตร${f.amount_thb ? ' · ' + nf(f.amount_thb, 2) + ' บาท' : ''}</div>
       <div class="s">${esc(f.station || 'ไม่ระบุปั๊ม')} · ${thTime(new Date(f.filled_at))}</div></div></div>`).join('');
 
+  const openNow = (t.stops || []).filter(s => !s.job_type_code).length;
   const nodes = [
-    el(`<div class="note ${tracking() ? 'g' : 'w'}"><span>${tracking() ? '◉' : '⏸'}</span><span>${
+    fin
+      ? el(`<div class="note w"><span>🗓</span><span><b>งานวันที่ ${thDate(new Date(t.startAt))} ระบบปิดให้อัตโนมัติแล้ว</b>
+          (ลืมกดสิ้นสุดงาน) — กรุณาระบุจุดปฏิบัติงานที่ค้าง <b>${openNow} จุด</b> ให้ครบ
+          แล้วกด "บันทึกงานนี้เสร็จสิ้น" ด้านล่าง${openNow ? '' : ' — ครบแล้ว กดบันทึกได้เลย'}</span></div>`)
+      : el(`<div class="note ${tracking() ? 'g' : 'w'}"><span>${tracking() ? '◉' : '⏸'}</span><span>${
       !tracking() ? 'การบันทึกเส้นทางหยุดอยู่ — แตะปุ่มด้านล่างเพื่อเริ่มใหม่'
       : NATIVE.on
         ? '<b>กำลังบันทึกเส้นทางแม้ล็อกหน้าจอ</b><br>ปิดหน้าจอหรือสลับไปแอปอื่นได้ตามปกติ ระบบเก็บพิกัดต่อจนกว่าจะกด "สิ้นสุดการทำงาน"'
@@ -2335,19 +2358,24 @@ function viewActive() {
     el(`<div class="card"><h3>จุดปฏิบัติงานในทริปนี้</h3>
         <div class="sub">แต่ละจุดระบุประเภทงานแยกกัน · แวะที่ไหนเกิน ${CFG.dwellMinutes} นาที ระบบบันทึกพิกัดให้เอง แล้วให้คุณเลือกว่าแวะทำอะไร</div>
         <div class="list">${stopList}</div></div>`),
-    el(`<div class="row"><button class="btn gh" id="addstop">📍 เพิ่มจุด</button>
+    fin
+      ? el(`<button class="btn gh" id="addpast">🗺 เพิ่มจุดย้อนหลังจากเส้นทาง</button>`)
+      : el(`<div class="row"><button class="btn gh" id="addstop">📍 เพิ่มจุด</button>
         <button class="btn gh" id="addfuel">⛽ เติมน้ำมัน</button></div>`),
-    el(`<button class="btn gh" id="addpast">🗺 เพิ่มจุดย้อนหลังจากเส้นทาง</button>`),
   ];
+  if (!fin) nodes.push(el(`<button class="btn gh" id="addpast">🗺 เพิ่มจุดย้อนหลังจากเส้นทาง</button>`));
   if (fuelList) nodes.push(el(`<div class="card"><h3>การเติมน้ำมัน</h3><div class="list">${fuelList}</div></div>`));
-  if (!tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
-  nodes.push(el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
+  if (!fin && !tracking()) nodes.push(el('<button class="btn gh" id="resume">▶ เริ่มบันทึกเส้นทางต่อ</button>'));
+  nodes.push(fin
+    ? el('<button class="btn lg" id="finish">✅ บันทึกงานนี้เสร็จสิ้น</button>')
+    : el('<button class="btn stop lg" id="end">■ สิ้นสุดการทำงาน</button>'));
 
-  shell('กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
-  $('#addstop').onclick = () => viewStopForm();
-  $('#addfuel').onclick = () => viewFuelForm();
-  $('#addpast').onclick = () => go('addpast');
-  $('#end').onclick = () => viewTripEnd();
+  shell(fin ? 'บันทึกงานย้อนหลังให้เสร็จ' : 'กำลังปฏิบัติงาน', nodes, { back: () => go('home'), tabs: false, actions: false });
+  if ($('#addstop')) $('#addstop').onclick = () => viewStopForm();
+  if ($('#addfuel')) $('#addfuel').onclick = () => viewFuelForm();
+  if ($('#addpast')) $('#addpast').onclick = () => go('addpast');
+  if ($('#end')) $('#end').onclick = () => viewTripEnd();
+  if ($('#finish')) $('#finish').onclick = () => finishUnfinished();
   if ($('#resume')) $('#resume').onclick = () => { startWatch(); go('active'); };
   document.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => {
     const s = t.stops.find(x => x.id === b.dataset.cls); askDwell(s.id, s.dwell_minutes || 0); });
@@ -2373,6 +2401,41 @@ function viewActive() {
     go('active');
   });
   if (S.pendingDwell) { const d = S.pendingDwell; S.pendingDwell = null; askDwell(d.id, d.mins); }
+}
+
+/* เปิด "งานที่ระบบปิดให้อัตโนมัติแต่ยังระบุจุดไม่ครบ" ขึ้นมาบันทึกให้เสร็จ
+   โหลด stops/points ของ session นั้นเป็น S.trip (โหมด _finishing) แล้วไปหน้า active */
+async function openUnfinished() {
+  const u = S.unfinished; if (!u || !u.session) return;
+  const a = u.session;
+  loading('กำลังเปิดงานที่ค้าง…');
+  try {
+    const [{ data: sts }, { data: pts }, { data: fus }] = await Promise.all([
+      sb.from('stops').select('*').eq('session_id', a.id).order('seq'),
+      sb.from('session_points').select('at,lat,lng').eq('session_id', a.id).order('at'),
+      sb.from('fuel_records').select('*').eq('session_id', a.id),
+    ]);
+    S.trip = { id: a.id, user_id: a.user_id, vehicle_id: a.vehicle_id, status: 'auto_closed',
+      startAt: a.start_at, start_lat: a.start_lat, start_lng: a.start_lng, odo_start: a.odo_start,
+      distM: a.gps_distance_m || 0,
+      points: (pts || []).map(p => ({ at: p.at, lat: p.lat, lng: p.lng, _s: 1 })),
+      stops: sts || [], fuels: fus || [], media: [], _counted: null, _finishing: true };
+    saveTrip();
+    go('active');
+  } catch (e) { toast('เปิดงานที่ค้างไม่ได้ ลองใหม่อีกครั้ง', 1); go('home'); }
+}
+
+/* พนักงานกด "บันทึกงานนี้เสร็จสิ้น" — ต้องระบุจุดครบก่อน แล้วดันขึ้น server + ปลดบล็อก */
+async function finishUnfinished() {
+  const t = S.trip; if (!t) return;
+  const open = (t.stops || []).filter(s => !s.job_type_code).length;
+  if (open) return toast('ยังมีจุดที่ยังไม่ได้ระบุ ' + open + ' จุด — แตะจุดสีเหลือง/กด "เลือกเลย" ให้ครบก่อน', 1, 8000);
+  if (!await askConfirm('บันทึกงานนี้เสร็จสิ้น?',
+      'ยืนยันว่าระบุจุดปฏิบัติงานของวันนี้ครบแล้ว — จากนั้นจะเริ่มงานวันใหม่ได้', 'บันทึกเสร็จสิ้น')) return;
+  await sync();                         // ดันจุดที่ระบุแล้วขึ้น server
+  S.unfinished = null; S.trip = null; LS.del('trip');
+  toast('บันทึกงานเรียบร้อย — เริ่มงานวันใหม่ได้แล้ว');
+  go('home');
 }
 
 /* ปิดงานที่ค้าง "กำลังทำงาน" ที่เซิร์ฟเวอร์ (sql/31) — สำหรับทริปที่ถูกกู้มา
@@ -5713,6 +5776,15 @@ async function boot() {
       S.trip.stops = sts || []; S.trip.fuels = fus || [];
       saveTrip(); startWatch();
     }
+  }
+
+  // ไม่มีทริปที่กำลังทำงาน -> เช็ก "งานที่ระบบปิดให้แต่ยังระบุจุดไม่ครบ" เพื่อบล็อกเริ่มงานใหม่
+  S.unfinished = null;
+  if (!S.trip) {
+    try {
+      const { data } = await sb.rpc('my_unfinished_session');
+      if (data?.has) S.unfinished = { session: data.session, open_stops: data.open_stops };
+    } catch {}
   }
 
   S.ready = true; countPending();
