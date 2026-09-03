@@ -519,7 +519,7 @@ function shell(title, body, opts = {}) {
 }
 
 function tabs() {
-  const isSup = S.profile?.is_supervisor || S.profile?.role === 'admin' || S.profile?.role === 'superadmin';
+  const isSup = S.profile?.is_supervisor || S.profile?.role === 'admin' || S.profile?.role === 'superadmin' || S.isAccounting;
   const t = el(`<div class="nav">
     <button data-v="home" class="${S.tab === 'home' ? 'on' : ''}"><span class="g">🏠</span>หน้าหลัก</button>
     <button data-v="history" class="${S.tab === 'history' ? 'on' : ''}"><span class="g">🕘</span>ประวัติ</button>
@@ -1526,16 +1526,6 @@ function viewHome() {
       <button class="btn gh" id="goclaim" style="margin-top:10px">🧾 เบิกค่าเดินทาง / ค่าใช้จ่าย</button></div>`));
   }
 
-  // ฝ่ายบัญชี Daojai / superadmin -> เมนูพิจารณาจ่ายค่าเดินทาง
-  if (S.isAccounting) {
-    nodes.push(el(`<div class="card">
-      <div style="display:flex;align-items:center;gap:9px">
-        <span style="font-size:20px">💰</span>
-        <div style="flex:1"><b style="font-size:14px">พิจารณาจ่ายค่าเดินทาง (บัญชี)</b>
-          <div class="lb">ดูคำขอที่หัวหน้าอนุมัติแล้ว · เอกสาร/ผู้รับเงิน · ยืนยันจ่ายเงิน</div></div></div>
-      <button class="btn gh" id="goclaimacct" style="margin-top:10px">💰 เปิดหน้าจ่ายค่าเดินทาง</button></div>`));
-  }
-
   if (!t && S.unfinished) {
     // มีงานที่ระบบปิดให้อัตโนมัติแต่ยังระบุจุดไม่ครบ -> บล็อกเริ่มงานใหม่ ต้องบันทึกงานเดิมก่อน
     const u = S.unfinished;
@@ -1550,7 +1540,6 @@ function viewHome() {
     shell(CFG.appName, nodes, { tabs: true });
     if ($('#chv')) $('#chv').onclick = () => go('garage');
     if ($('#goclaim')) $('#goclaim').onclick = () => go('claim');
-    if ($('#goclaimacct')) $('#goclaimacct').onclick = () => go('claimacct');
     $('#gofinish').onclick = () => openUnfinished();
     return;
   }
@@ -1620,7 +1609,6 @@ function viewHome() {
   shell(CFG.appName, nodes, { tabs: true });
   if ($('#chv')) $('#chv').onclick = () => go('garage');
   if ($('#goclaim')) $('#goclaim').onclick = () => go('claim');
-  if ($('#goclaimacct')) $('#goclaimacct').onclick = () => go('claimacct');
   if ($('#askbk')) $('#askbk').onclick = () => go('backup');
   if ($('#bkc')) $('#bkc').onchange = e => {
     LS.set('useBackup', e.target.checked);
@@ -4060,13 +4048,38 @@ async function viewApprovals() {
         <button class="btn gh" data-tcno="${c.id}" style="color:var(--stop)">ไม่อนุมัติ</button>
         <button class="btn" data-tcyes="${c.id}">อนุมัติ</button></div></div>`); });
 
-  const nodes = (crNodes.length || tcNodes.length)
-    ? [...crNodes, ...tcNodes]
+  // ฝ่ายบัญชี (Daojai) / superadmin — คิวพิจารณาจ่ายค่าเดินทาง (รวมในแท็บอนุมัติ)
+  const payNodes = [];
+  if (S.isAccounting) {
+    const payClaims = await loadAccountingClaims();
+    if (payClaims) {
+      const wait = payClaims.filter(c => c.status === 'approved');
+      const done = payClaims.filter(c => c.status === 'paid');
+      payNodes.push(el(`<div class="hr" style="margin-top:6px"></div>
+        <div class="lb" style="font-weight:700;font-size:12px">💰 พิจารณาจ่ายค่าเดินทาง (ฝ่ายบัญชี)</div>`));
+      if (wait.length) { payNodes.push(el(`<div class="lb">รอจ่าย (${wait.length})</div>`));
+        for (const c of wait) payNodes.push(await buildPayCard(c)); }
+      if (done.length) { payNodes.push(el(`<div class="lb" style="margin-top:6px">จ่ายแล้ว (${done.length})</div>`));
+        for (const c of done) payNodes.push(await buildPayCard(c)); }
+      if (!wait.length && !done.length) payNodes.push(el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอเบิกที่รอจ่าย</span></div>`));
+    }
+  }
+
+  const nodes = (crNodes.length || tcNodes.length || payNodes.length)
+    ? [...crNodes, ...tcNodes, ...payNodes]
     : [el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอที่รออนุมัติ</span></div>`)];
   shell('รออนุมัติ', nodes, { tabs: true });
   rows.filter(r => r.req_type === 'fleet_card')
     .forEach(r => renderFleetDocs($('#apdocs_' + r.id), r.id));
   tcRows.forEach(c => renderClaimItems($('#tcitems_' + c.id), c.id));
+
+  document.querySelectorAll('[data-pay]').forEach(b => b.onclick = async () => {
+    if (!await askConfirm('ยืนยันจ่ายเงิน?', 'ยืนยันว่าจ่ายค่าเดินทางของคำขอนี้แล้ว — ระบบจะแจ้งพนักงาน', 'จ่ายเงินแล้ว')) return;
+    b.disabled = true; b.textContent = 'กำลังบันทึก…';
+    const { data } = await sb.rpc('pay_travel_claim', { p_claim: b.dataset.pay, p_note: null });
+    if (data?.ok !== true) { b.disabled = false; b.textContent = '💰 ยืนยันจ่ายเงิน'; return toast('ทำรายการไม่สำเร็จ (' + (data?.code || '') + ')', 1); }
+    toast('บันทึกการจ่ายเงินแล้ว'); go('approvals');
+  });
 
   const decideClaim = async (id, ok, note) => {
     const { data } = await sb.rpc('decide_travel_claim', { p_claim: id, p_approve: ok, p_note: note || null });
@@ -6079,80 +6092,53 @@ async function renderClaimItems(box, claimId) {
 }
 
 /* ฝ่ายบัญชี (Daojai) / superadmin — พิจารณาจ่ายค่าเดินทาง */
-async function viewClaimAccounting() {
-  S.tab = 'home'; loading('กำลังโหลดคำขอเบิก…');
-  let res = null;
-  try { const { data } = await sb.rpc('claims_for_accounting'); res = data; } catch {}
-  if (!res || res.ok !== true) {
-    return shell('จ่ายค่าเดินทาง',
-      [el('<div class="note w"><span>🔒</span><span>เฉพาะฝ่ายบัญชีค่าเดินทาง / superadmin เท่านั้น</span></div>')],
-      { back: () => go('home'), tabs: true, actions: false });
-  }
-  const claims = res.claims || [];
-  const waiting = claims.filter(c => c.status === 'approved');
-  const paid = claims.filter(c => c.status === 'paid');
-  const objName = c => (S.master.job_types.find(j => j.code === c)?.name_th) || c || '';
+// โหลดคำขอเบิกสำหรับฝ่ายบัญชี (คืน null ถ้าไม่มีสิทธิ์/เรียกไม่ได้ · [] ถ้าไม่มีรายการ)
+async function loadAccountingClaims() {
+  try { const { data } = await sb.rpc('claims_for_accounting'); return (data && data.ok) ? (data.claims || []) : null; }
+  catch { return null; }
+}
+async function signedFileLink(path, label) {
+  if (!path) return '';
+  try { const { data } = await sb.storage.from(CFG.bucket).createSignedUrl(path, 600);
+    return data?.signedUrl ? `<a class="link" href="${data.signedUrl}" target="_blank" rel="noopener">📎 ${esc(label)}</a>` : ''; }
+  catch { return ''; }
+}
+// การ์ดพิจารณาจ่ายค่าเดินทาง (ฝ่ายบัญชี) — ใช้ในแท็บอนุมัติ
+async function buildPayCard(c) {
+  const objName = k => (S.master.job_types.find(j => j.code === k)?.name_th) || k || '';
   const typeName = k => (CLAIM_TYPES.find(t => t[0] === k)?.[2]) || k;
-
-  const link = async (path, label) => {
-    if (!path) return '';
-    try { const { data } = await sb.storage.from(CFG.bucket).createSignedUrl(path, 600);
-      return data?.signedUrl ? `<a class="link" href="${data.signedUrl}" target="_blank" rel="noopener">📎 ${esc(label)}</a>` : ''; }
-    catch { return ''; }
-  };
-
-  const card = async (c) => {
-    const km = (c.km_distance_m || 0) / 1000, kmAmt = km * (c.km_rate_thb || 6);
-    const itemsAmt = (c.items || []).reduce((a, it) => a + (+it.amount || 0), 0);
-    const r = c.recipient || {};
-    const recLinks = [await link(r.idcard_path, 'บัตร ปชช.'), await link(r.bankbook_path, 'สมุดบัญชี')].filter(Boolean).join(' · ');
-    const itemsHtml = await Promise.all((c.items || []).map(async it => {
-      const d = it.detail || {};
-      const dtxt = Object.entries(d).filter(([k, v]) => v && !['lat', 'lng'].includes(k)).map(([, v]) => esc(v)).join(' · ');
-      const fl = (await Promise.all((it.files || []).map(f => link(f.path, f.doc || 'ไฟล์')))).filter(Boolean).join(' · ');
-      const geo = (d.lat && d.lng) ? ` · <a class="link" href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank" rel="noopener">🗺 พิกัด</a>` : '';
-      return `<div class="item"><div class="tx"><div class="h" style="font-size:12.5px">${esc(typeName(it.type))}${it.amount ? ' · ' + nf(it.amount, 2) + ' บาท' : ''}</div>
-        <div class="s">${dtxt}${fl ? '<br>' + fl : ''}${geo}</div></div></div>`;
-    }));
-    const el0 = el(`<div class="card">
-      <div style="display:flex;align-items:center"><span class="pill ${c.status === 'paid' ? 'g' : 'b'}">${c.status === 'paid' ? '✓ จ่ายแล้ว' : '💰 รอจ่าย'}</span>
-        <span class="sp"></span><span class="lb">${c.decided_at ? thDT(new Date(c.decided_at)) : ''}</span></div>
-      <h3 style="margin-top:8px">${esc(c.emp_name || 'ไม่ทราบชื่อ')}</h3>
-      <div class="lb mono">${esc(c.emp_code || '')}${c.is_other_cc ? ' · ทำงานให้ CC ' + esc(c.cost_center_code || '') : (c.emp_cc ? ' · ' + esc(c.emp_cc) : '')}</div>
-      <div class="hr"></div>
-      <div class="lb">ผู้รับเงิน</div>
-      <div>${esc(r.full_name_th || '(ยังไม่ลงทะเบียน)')} · ${esc(r.bank_name || '')} ${esc(r.bank_account_no || '')}</div>
-      ${recLinks ? `<div style="margin-top:3px">${recLinks}</div>` : ''}
-      <div class="lb" style="margin-top:6px">ค่าเดินทาง</div>
-      <div class="mono">${nf(km)} กม. × ${nf(c.km_rate_thb || 6, 0)} = <b>${nf(kmAmt, 2)} บาท</b></div>
-      <div class="lb" style="margin-top:6px">วัตถุประสงค์</div><div>${esc(objName(c.objective_code))}${c.travel_abroad ? ' · ต่างประเทศ (' + esc(c.country_code || '') + ')' : ''}</div>
-      ${c.brm_no ? `<div class="lb" style="margin-top:5px">BRM</div><div class="mono">${esc(c.brm_no)}</div>` : ''}
-      <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(c.reason || '')}</div>
-      <div class="lb" style="margin-top:7px">รายการเบิก</div><div class="list">${itemsHtml.join('') || '<div class="lb">—</div>'}</div>
-      <div class="hr"></div>
-      <div style="display:flex;align-items:baseline;gap:6px"><span class="lb">รวมทั้งสิ้น</span>
-        <span class="mono" style="font-size:17px;font-weight:800;color:var(--b)">${nf(kmAmt + itemsAmt, 2)} บาท</span></div>
-      ${c.status === 'approved' ? `<button class="btn" data-pay="${c.id}" style="margin-top:10px">💰 ยืนยันจ่ายเงิน</button>` : ''}
-    </div>`);
-    return el0;
-  };
-
-  const nodes = [el(`<div class="note i"><span>💰</span><span>คำขอที่หัวหน้าอนุมัติแล้ว รอฝ่ายบัญชีพิจารณาจ่าย —
-    เปิดดูเอกสาร/ผู้รับเงินได้ กด "ยืนยันจ่ายเงิน" เมื่อจ่ายแล้ว</span></div>`)];
-  if (waiting.length) { nodes.push(el(`<div class="lb" style="margin-top:4px">💰 รอจ่าย (${waiting.length})</div>`));
-    for (const c of waiting) nodes.push(await card(c)); }
-  if (paid.length) { nodes.push(el(`<div class="lb" style="margin-top:8px">✓ จ่ายแล้ว (${paid.length})</div>`));
-    for (const c of paid) nodes.push(await card(c)); }
-  if (!claims.length) nodes.push(el(`<div class="note g"><span>✓</span><span>ไม่มีคำขอเบิกที่ต้องดำเนินการ</span></div>`));
-
-  shell('จ่ายค่าเดินทาง (บัญชี)', nodes, { back: () => go('home'), tabs: true, actions: false });
-  document.querySelectorAll('[data-pay]').forEach(b => b.onclick = async () => {
-    if (!await askConfirm('ยืนยันจ่ายเงิน?', 'ยืนยันว่าจ่ายค่าเดินทางของคำขอนี้แล้ว — ระบบจะแจ้งพนักงาน', 'จ่ายเงินแล้ว')) return;
-    b.disabled = true; b.textContent = 'กำลังบันทึก…';
-    const { data } = await sb.rpc('pay_travel_claim', { p_claim: b.dataset.pay, p_note: null });
-    if (data?.ok !== true) { b.disabled = false; b.textContent = '💰 ยืนยันจ่ายเงิน'; return toast('ทำรายการไม่สำเร็จ (' + (data?.code || '') + ')', 1); }
-    toast('บันทึกการจ่ายเงินแล้ว'); go('claimacct');
-  });
+  const km = (c.km_distance_m || 0) / 1000, kmAmt = km * (c.km_rate_thb || 6);
+  const itemsAmt = (c.items || []).reduce((a, it) => a + (+it.amount || 0), 0);
+  const r = c.recipient || {};
+  const recLinks = [await signedFileLink(r.idcard_path, 'บัตร ปชช.'), await signedFileLink(r.bankbook_path, 'สมุดบัญชี')].filter(Boolean).join(' · ');
+  const itemsHtml = await Promise.all((c.items || []).map(async it => {
+    const d = it.detail || {};
+    const dtxt = Object.entries(d).filter(([k, v]) => v && !['lat', 'lng'].includes(k)).map(([, v]) => esc(v)).join(' · ');
+    const fl = (await Promise.all((it.files || []).map(f => signedFileLink(f.path, f.doc || 'ไฟล์')))).filter(Boolean).join(' · ');
+    const geo = (d.lat && d.lng) ? ` · <a class="link" href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank" rel="noopener">🗺 พิกัด</a>` : '';
+    return `<div class="item"><div class="tx"><div class="h" style="font-size:12.5px">${esc(typeName(it.type))}${it.amount ? ' · ' + nf(it.amount, 2) + ' บาท' : ''}</div>
+      <div class="s">${dtxt}${fl ? '<br>' + fl : ''}${geo}</div></div></div>`;
+  }));
+  return el(`<div class="card">
+    <div style="display:flex;align-items:center"><span class="pill ${c.status === 'paid' ? 'g' : 'b'}">${c.status === 'paid' ? '✓ จ่ายแล้ว' : '💰 รอจ่าย'}</span>
+      <span class="sp"></span><span class="lb">${c.decided_at ? thDT(new Date(c.decided_at)) : ''}</span></div>
+    <h3 style="margin-top:8px">${esc(c.emp_name || 'ไม่ทราบชื่อ')}</h3>
+    <div class="lb mono">${esc(c.emp_code || '')}${c.is_other_cc ? ' · ทำงานให้ CC ' + esc(c.cost_center_code || '') : (c.emp_cc ? ' · ' + esc(c.emp_cc) : '')}</div>
+    <div class="hr"></div>
+    <div class="lb">ผู้รับเงิน</div>
+    <div>${esc(r.full_name_th || '(ยังไม่ลงทะเบียน)')} · ${esc(r.bank_name || '')} ${esc(r.bank_account_no || '')}</div>
+    ${recLinks ? `<div style="margin-top:3px">${recLinks}</div>` : ''}
+    <div class="lb" style="margin-top:6px">ค่าเดินทาง</div>
+    <div class="mono">${nf(km)} กม. × ${nf(c.km_rate_thb || 6, 0)} = <b>${nf(kmAmt, 2)} บาท</b></div>
+    <div class="lb" style="margin-top:6px">วัตถุประสงค์</div><div>${esc(objName(c.objective_code))}${c.travel_abroad ? ' · ต่างประเทศ (' + esc(c.country_code || '') + ')' : ''}</div>
+    ${c.brm_no ? `<div class="lb" style="margin-top:5px">BRM</div><div class="mono">${esc(c.brm_no)}</div>` : ''}
+    <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(c.reason || '')}</div>
+    <div class="lb" style="margin-top:7px">รายการเบิก</div><div class="list">${itemsHtml.join('') || '<div class="lb">—</div>'}</div>
+    <div class="hr"></div>
+    <div style="display:flex;align-items:baseline;gap:6px"><span class="lb">รวมทั้งสิ้น</span>
+      <span class="mono" style="font-size:17px;font-weight:800;color:var(--b)">${nf(kmAmt + itemsAmt, 2)} บาท</span></div>
+    ${c.status === 'approved' ? `<button class="btn" data-pay="${c.id}" style="margin-top:10px">💰 ยืนยันจ่ายเงิน</button>` : ''}
+  </div>`);
 }
 
 /* ==================================================================== */
@@ -6168,7 +6154,7 @@ function go(v, opts) {
     admin: viewAdmin, users: viewUsers, dashboard: viewDashboard, settings: viewSettings,
     syncstatus: viewSyncStatus, pinreport: viewPinReport, addpast: viewAddPastStop,
     fleetissue: viewFleetIssue, claim: viewTravelClaim, claimrecipient: () => viewClaimRecipient(opts || {}),
-    claimacct: viewClaimAccounting,
+    claimacct: viewApprovals,   // ย้ายไปรวมในแท็บอนุมัติแล้ว
   };
   (map[v] || viewHome)();
 }
