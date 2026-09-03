@@ -4039,7 +4039,7 @@ async function viewApprovals() {
       <div class="lb">${esc(names[c.user_id] || 'ไม่ทราบชื่อ')}${c.is_other_cc ? ' · ทำงานให้ CC ' + esc(c.cost_center_code || '') : ''}</div>
       <div class="hr"></div>
       <div class="lb">ค่าเดินทาง</div><div class="mono vl">${nf(km)} กม. × ${nf(c.km_rate_thb || 6, 0)} = ${nf(km * (c.km_rate_thb || 6), 2)} บาท</div>
-      <div class="lb" style="margin-top:5px">วัตถุประสงค์</div><div>${esc(objName(c.objective_code))}${c.travel_abroad ? ' · ต่างประเทศ' : ''}</div>
+      <div class="lb" style="margin-top:5px">วัตถุประสงค์ · ปลายทาง</div><div>${esc(objName(c.objective_code))} · ${c.travel_abroad ? 'ต่างประเทศ ' + esc(c.country_code || '') : 'ในประเทศ ' + esc(c.dest_province || '-')}${c.depart_date ? ' (' + esc(c.depart_date) + '–' + esc(c.return_date || '') + ')' : ''}</div>
       ${c.brm_no ? `<div class="lb" style="margin-top:5px">BRM</div><div class="mono">${esc(c.brm_no)}</div>` : ''}
       <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(c.reason || '')}</div>
       <div class="lb" style="margin-top:7px">รายการเบิก + เอกสาร</div>
@@ -5758,8 +5758,9 @@ async function viewClaimRecipient(opts) {
       <label class="f" style="margin-top:8px"><span>นามสกุล (ภาษาไทย) <b style="color:var(--r)">*</b></span>
         <input id="rcln" value="${esc((cur?.full_name_th || '').split(' ').slice(1).join(' '))}"></label>
       <label class="f" style="margin-top:8px"><span>ธนาคาร</span>
-        <input id="rcbank" value="${esc(cur?.bank_name || 'ธนาคารกสิกรไทย')}"></label>
-      <label class="f" style="margin-top:8px"><span>เลขที่บัญชี <b style="color:var(--r)">*</b></span>
+        <div style="border:1px solid var(--field);border-radius:9px;padding:8px 11px;background:var(--surface-2);font-weight:600;color:var(--ink)">
+          🏦 ธนาคารกสิกรไทย <span class="lb" style="font-weight:400">(บริษัทกำหนดให้เบิกจ่ายผ่านกสิกรไทยเท่านั้น)</span></div></label>
+      <label class="f" style="margin-top:8px"><span>เลขที่บัญชี (กสิกรไทย) <b style="color:var(--r)">*</b></span>
         <input id="rcacc" inputmode="numeric" value="${esc(cur?.bank_account_no || '')}" placeholder="เลขบัญชีธนาคาร"></label>
       <label class="f" style="margin-top:10px"><span>สำเนาบัตรประชาชน ${cur?.idcard_path ? '<span class="pill g">แนบแล้ว</span>' : '<b style="color:var(--r)">*</b>'}</span>
         <input type="file" id="rcidcard" accept="${FILE_ACCEPT}" style="font-size:12px;padding:6px 0"><span class="lb" id="rcidcardn"></span></label>
@@ -5792,7 +5793,7 @@ async function viewClaimRecipient(opts) {
       const idPath = idF ? await up(idF, 'idcard') : cur?.idcard_path;
       const bbPath = bbF ? await up(bbF, 'bankbook') : cur?.bankbook_path;
       const { error } = await sb.from('claim_recipients').upsert({
-        user_id: S.profile.id, full_name_th: fn + ' ' + ln, bank_name: $('#rcbank').value.trim() || null,
+        user_id: S.profile.id, full_name_th: fn + ' ' + ln, bank_name: 'ธนาคารกสิกรไทย',
         bank_account_no: acc, idcard_path: idPath, bankbook_path: bbPath, updated_at: new Date().toISOString() });
       if (error) throw error;
       S.hasRecipient = true;
@@ -5854,6 +5855,13 @@ async function viewTravelClaim() {
       <div class="lb" style="margin-top:12px">ลักษณะการเดินทาง</div>
       <div class="seg" id="tcTypeSeg" style="margin-top:5px">
         <button data-v="dom" class="on">ในประเทศ</button><button data-v="abroad">ต่างประเทศ</button></div>
+      <div id="tcDomWrap">
+        <label class="f" style="margin-top:8px"><span>จังหวัดปลายทาง <b style="color:var(--r)">*</b></span>
+          <select id="tcProv"><option value="">— เลือก —</option>${provOpts}</select></label>
+        <div class="row" style="margin-top:8px">
+          <label class="f"><span>วันเริ่มเดินทาง <b style="color:var(--r)">*</b></span><input id="tcD1dom" type="date"></label>
+          <label class="f"><span>วันสิ้นสุด <b style="color:var(--r)">*</b></span><input id="tcD2dom" type="date"></label></div>
+      </div>
       <div id="tcAbroadWrap" class="hide">
         <label class="f" style="margin-top:8px"><span>ประเทศปลายทาง <b style="color:var(--r)">*</b></span>
           <select id="tcCountry"><option value="">— เลือก —</option>${ctryOpts}</select></label>
@@ -5903,7 +5911,9 @@ async function viewTravelClaim() {
   segWire('tcCcSeg', v => { tc.ccOther = v === 'yes'; $('#tcCcWrap').classList.toggle('hide', !tc.ccOther); });
   segWire('tcBrmSeg', v => { tc.brm = v === 'yes'; $('#tcBrmWrap').classList.toggle('hide', !tc.brm); });
   segWire('tcTypeSeg', v => {
-    tc.abroad = v === 'abroad'; $('#tcAbroadWrap').classList.toggle('hide', !tc.abroad);
+    tc.abroad = v === 'abroad';
+    $('#tcAbroadWrap').classList.toggle('hide', !tc.abroad);
+    $('#tcDomWrap').classList.toggle('hide', tc.abroad);
     // Airline claim: ปรับ default ในประเทศ/ต่างประเทศ ตามลักษณะการเดินทาง (ถ้าเปิดฟอร์มไว้)
     const acb = document.querySelector('.tcType[data-k="airline"]');
     if (acb && acb.checked) { $('#tcf_airline').innerHTML = claimFieldsHtml('airline', provOpts, ctryOpts, tc.abroad); wireClaimFields('airline'); }
@@ -6028,7 +6038,14 @@ async function submitTravelClaim(ctx) {
   const cc = otherCc ? $('#tcCc').value : (S.profile.cost_center_code || null);
   if (otherCc && !cc) return toast('เลือก Cost center', 1);
   const abroad = $('#tcTypeSeg button.on')?.dataset.v === 'abroad';
-  if (abroad && (!$('#tcCountry').value || !$('#tcD1').value || !$('#tcD2').value)) return toast('กรอกประเทศ + วันเริ่ม-สิ้นสุด', 1);
+  let country = null, destProv = null, d1 = null, d2 = null;
+  if (abroad) {
+    country = $('#tcCountry').value; d1 = $('#tcD1').value; d2 = $('#tcD2').value;
+    if (!country || !d1 || !d2) return toast('กรอกประเทศปลายทาง + วันเริ่ม-สิ้นสุด', 1);
+  } else {
+    destProv = $('#tcProv').value; d1 = $('#tcD1dom').value; d2 = $('#tcD2dom').value;
+    if (!destProv || !d1 || !d2) return toast('กรอกจังหวัดปลายทาง + วันเริ่ม-สิ้นสุด', 1);
+  }
   const brmOn = $('#tcBrmSeg button.on')?.dataset.v === 'yes', brmNo = brmOn ? $('#tcBrmNo').value.trim() : null;
   if (brmOn && !brmNo) return toast('กรอกเลข BRM', 1);
   const picked = [...document.querySelectorAll('.tcType:checked')].map(x => x.dataset.k);
@@ -6039,8 +6056,8 @@ async function submitTravelClaim(ctx) {
     const { data: claim, error } = await sb.from('travel_claims').insert({
       user_id: S.profile.id, session_id: ctx.sess?.id || null,
       cost_center_code: cc, is_other_cc: otherCc, travel_abroad: abroad,
-      country_code: abroad ? $('#tcCountry').value : null,
-      depart_date: abroad ? $('#tcD1').value : null, return_date: abroad ? $('#tcD2').value : null,
+      country_code: country, dest_province: destProv,
+      depart_date: d1, return_date: d2,
       objective_code: obj, brm_no: brmNo, reason,
       km_distance_m: ctx.sess ? (ctx.sess.gps_distance_m || 0) : null, km_rate_thb: ctx.rate,
     }).select('id').single();
@@ -6148,7 +6165,9 @@ async function buildPayCard(c) {
     ${recLinks ? `<div style="margin-top:3px">${recLinks}</div>` : ''}
     <div class="lb" style="margin-top:6px">ค่าเดินทาง</div>
     <div class="mono">${nf(km)} กม. × ${nf(c.km_rate_thb || 6, 0)} = <b>${nf(kmAmt, 2)} บาท</b></div>
-    <div class="lb" style="margin-top:6px">วัตถุประสงค์</div><div>${esc(objName(c.objective_code))}${c.travel_abroad ? ' · ต่างประเทศ (' + esc(c.country_code || '') + ')' : ''}</div>
+    <div class="lb" style="margin-top:6px">วัตถุประสงค์</div><div>${esc(objName(c.objective_code))}</div>
+    <div class="lb" style="margin-top:5px">ปลายทาง / ช่วงเดินทาง</div>
+    <div>${c.travel_abroad ? 'ต่างประเทศ · ' + esc(c.country_code || '') : 'ในประเทศ · ' + esc(c.dest_province || '-')}${c.depart_date ? ' · ' + esc(c.depart_date) + ' ถึง ' + esc(c.return_date || '') : ''}</div>
     ${c.brm_no ? `<div class="lb" style="margin-top:5px">BRM</div><div class="mono">${esc(c.brm_no)}</div>` : ''}
     <div class="lb" style="margin-top:5px">เหตุผล</div><div>${esc(c.reason || '')}</div>
     <div class="lb" style="margin-top:7px">รายการเบิก</div><div class="list">${itemsHtml.join('') || '<div class="lb">—</div>'}</div>
