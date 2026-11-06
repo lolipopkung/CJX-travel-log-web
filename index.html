@@ -5879,15 +5879,16 @@ async function viewTravelClaim() {
 
   await loadCountries();
   loading('กำลังเตรียมฟอร์มเบิก…');
-  // ทริปล่าสุดที่ปิดแล้ว — ใช้คิดค่าเดินทาง กม.ละ 6
-  let sess = null;
+  // ทริปที่ปิดแล้วและยังไม่เคยเบิก (90 วันล่าสุด) — เลือกได้หลายทริป คิด กม.ละ 6
+  // ฐานข้อมูลกันเบิกทริปซ้ำ + คำนวณ กม. เองจากทริปที่ผูก (sql/50)
+  let trips = [];
   try {
-    const { data } = await sb.from('work_sessions').select('id,start_at,gps_distance_m,status')
-      .eq('user_id', S.profile.id).neq('status', 'active').order('start_at', { ascending: false }).limit(1);
-    sess = (data || [])[0] || null;
-  } catch {}
+    const { data, error } = await sb.rpc('claimable_sessions', { p_days: 90 });
+    if (error) throw error;
+    trips = data || [];
+  } catch (e) { console.warn('claimable_sessions', e?.message); }
   const rate = +(S.master.kmRate || 6);
-  const km = sess ? (sess.gps_distance_m || 0) / 1000 : 0;
+  const tripTime = d => d ? new Date(d).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '–';
 
   const m = S.master;
   const ccOpts = (m.cost_centers || []).map(c => `<option value="${esc(c.code)}">${esc(c.code)} — ${esc(c.name)}</option>`).join('');
@@ -5897,15 +5898,21 @@ async function viewTravelClaim() {
 
   const b = el(`<main>
     <div class="note i"><span>🧾</span><span><b>เบิกค่าเดินทาง (พนักงานไม่มี Fleet card)</b><br>
-      ค่าเดินทางคิดจากระยะ GPS ของทริปล่าสุด × ${rate} บาท/กม. — ค่าใช้จ่ายอื่นเลือกจาก Claim ด้านล่าง</span></div>
+      ค่าเดินทางคิดจากระยะ GPS ของทริปที่เลือก × ${rate} บาท/กม. — ค่าใช้จ่ายอื่นเลือกจาก Claim ด้านล่าง</span></div>
 
     <div class="card"><h3>ค่าเดินทาง (ระยะทาง)</h3>
-      ${sess ? `<div class="lb" style="margin-top:6px">ทริปวันที่ ${thDate(new Date(sess.start_at))}</div>
-      <div style="display:flex;align-items:baseline;gap:8px;margin-top:4px">
-        <div class="mono" style="font-size:22px;font-weight:800">${nf(km)} กม.</div>
+      ${trips.length ? `<div class="lb" style="margin-top:6px">เลือกทริปที่จะเบิก (ทริปที่ปิดแล้วและยังไม่เคยเบิก · 90 วันล่าสุด)</div>
+      <div id="tcTrips" style="margin-top:6px">${trips.map((t, i) => `
+        <label style="display:flex;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--rule)">
+          <input type="checkbox" class="tcTrip" data-id="${esc(t.id)}" data-m="${+t.gps_distance_m || 0}" ${i === 0 ? 'checked' : ''}>
+          <span style="flex:1">${thDate(new Date(t.start_at))}
+            <span class="lb">${tripTime(t.start_at)}–${tripTime(t.end_at)}${t.status === 'auto_closed' ? ' · ระบบปิดให้' : ''}</span></span>
+          <span class="mono" style="font-weight:700">${nf((+t.gps_distance_m || 0) / 1000)} กม.</span></label>`).join('')}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+        <div class="mono" style="font-size:22px;font-weight:800" id="tcKm">0 กม.</div>
         <div class="lb">× ${rate} บาท =</div>
-        <div class="mono" style="font-size:20px;font-weight:800;color:var(--b)">${nf(km * rate, 2)} บาท</div></div>`
-      : '<div class="note w" style="margin-top:6px"><span>⚠</span><span>ยังไม่พบทริปที่ปิดแล้ว — เบิกได้เฉพาะค่าใช้จ่ายอื่น</span></div>'}
+        <div class="mono" style="font-size:20px;font-weight:800;color:var(--b)" id="tcKmAmt">0 บาท</div></div>`
+      : '<div class="note w" style="margin-top:6px"><span>⚠</span><span>ไม่มีทริปที่ปิดแล้วและยังไม่ได้เบิก — เบิกได้เฉพาะค่าใช้จ่ายอื่น</span></div>'}
     </div>
 
     <div class="card"><h3>ข้อมูลการเดินทาง</h3>
@@ -6002,7 +6009,17 @@ async function viewTravelClaim() {
     if (cb.checked && !box.innerHTML) { box.innerHTML = claimFieldsHtml(k, provOpts, ctryOpts, tc.abroad); wireClaimFields(k); }
   });
 
-  $('#tcSubmit').onclick = () => submitTravelClaim({ sess, km, rate });
+  // รวมระยะทริปที่ติ๊ก -> แสดงยอดทันที (ยอดจริงฐานข้อมูลคำนวณซ้ำตอนส่ง)
+  const pickedTrips = () => [...document.querySelectorAll('.tcTrip:checked')];
+  const sumTrips = () => {
+    const km = pickedTrips().reduce((a, x) => a + (+x.dataset.m || 0), 0) / 1000;
+    if ($('#tcKm')) $('#tcKm').textContent = nf(km) + ' กม.';
+    if ($('#tcKmAmt')) $('#tcKmAmt').textContent = nf(km * rate, 2) + ' บาท';
+  };
+  document.querySelectorAll('.tcTrip').forEach(cb => cb.onchange = sumTrips);
+  sumTrips();
+
+  $('#tcSubmit').onclick = () => submitTravelClaim({ tripIds: pickedTrips().map(x => x.dataset.id), rate });
 }
 
 /* HTML ช่องกรอกของแต่ละ claim type */
@@ -6116,16 +6133,30 @@ async function submitTravelClaim(ctx) {
 
   const btn = $('#tcSubmit'); btn.disabled = true; btn.textContent = 'กำลังส่ง…';
   try {
+    // สร้างเป็น draft ก่อน (หัวหน้ายังไม่เห็น) -> ผูกทริป -> ถ้าทริปถูกเบิกไปแล้ว ลบ draft ทิ้ง
+    // km_distance_m ฐานข้อมูลคำนวณเองจากทริปที่ผูก (sql/50) ไม่ส่งจากแอป
     const { data: claim, error } = await sb.from('travel_claims').insert({
-      user_id: S.profile.id, session_id: ctx.sess?.id || null,
+      user_id: S.profile.id, status: 'draft',
       cost_center_code: cc, is_other_cc: otherCc, travel_abroad: abroad,
       country_code: country, dest_province: destProv,
       depart_date: d1, return_date: d2,
       objective_code: obj, brm_no: brmNo, reason,
-      km_distance_m: ctx.sess ? (ctx.sess.gps_distance_m || 0) : null, km_rate_thb: ctx.rate,
+      km_rate_thb: ctx.rate,
     }).select('id').single();
     if (error) throw error;
     const cid = claim.id;
+    if (ctx.tripIds?.length) {
+      const { data: lk, error: lkErr } = await sb.rpc('set_claim_trips', { p_claim: cid, p_sessions: ctx.tripIds });
+      if (lkErr || !lk?.ok) {
+        try { await sb.from('travel_claims').delete().eq('id', cid); } catch {}
+        btn.disabled = false; btn.textContent = 'ส่งคำขอเบิกค่าเดินทาง';
+        const code = lk?.code || '';
+        toast(code === 'TRIP_ALREADY_CLAIMED' ? 'มีทริปที่เลือกถูกเบิกไปแล้ว — เปิดฟอร์มใหม่เพื่อดูรายการล่าสุด'
+          : code === 'TRIP_NOT_CLOSED' ? 'มีทริปที่ยังไม่ได้ปิดงาน — ปิดงานก่อนแล้วค่อยเบิก'
+          : 'ผูกทริปไม่สำเร็จ: ' + (lkErr?.message || code), 1, 7000);
+        return;
+      }
+    }
     // ถ้ามีเบิกน้ำมัน เก็บพิกัด ณ จุดกดส่ง 1 ครั้ง
     let coords = null;
     if (picked.includes('fuel') || picked.includes('rental_car')) {
@@ -6156,6 +6187,8 @@ async function submitTravelClaim(ctx) {
     // กำหนดผู้อนุมัติ (สายตรง / ผู้บังคับบัญชา cost center อื่น) + แจ้งหัวหน้า
     let routed = null;
     try { const { data } = await sb.rpc('route_travel_claim', { p_claim: cid }); routed = data; } catch {}
+    // route_travel_claim เป็นตัวเปลี่ยน draft -> submitted · ถ้าเรียกไม่สำเร็จ ส่งเองให้ไม่ค้างเป็น draft
+    if (!routed?.ok) { try { await sb.from('travel_claims').update({ status: 'submitted' }).eq('id', cid); } catch {} }
     toast(routed?.has_approver ? 'ส่งคำขอเบิกให้หัวหน้าอนุมัติแล้ว'
       : 'บันทึกคำขอแล้ว แต่ยังไม่พบผู้อนุมัติในระบบ — แจ้ง Admin', routed?.has_approver ? 0 : 1, 6000);
     go('home');
